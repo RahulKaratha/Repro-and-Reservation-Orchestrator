@@ -6,7 +6,6 @@ class RoleEnum(enum.Enum):
     Engineer = "Engineer"
     Manager = "Manager"
 
-
 class User(db.Model):
     __tablename__ = "users"
 
@@ -15,20 +14,18 @@ class User(db.Model):
     last_name = db.Column("Last_Name", db.String(10))
     email = db.Column("Email", db.String(100), unique=True, nullable=False)
     password = db.Column("Password", db.String(255), nullable=False)
-    role = db.Column("Role", Enum(RoleEnum), nullable=False)
+    role = db.Column("Role", db.String(20), nullable=False)
 
-    # Relationships
+    # Manager relationship
     managed_workgroups = db.relationship(
         "Workgroup",
-        backref="manager",
-        cascade="all, delete",
-        foreign_keys="Workgroup.manager_id"
+        back_populates="manager"
     )
 
-    assigned_workgroups = db.relationship(
+    # Engineer assignments
+    assignments = db.relationship(
         "WorkgroupAssignment",
-        back_populates="employee",
-        cascade="all, delete"
+        back_populates="employee"
     )
 
     def __repr__(self):

@@ -12,19 +12,21 @@ class Workgroup(db.Model):
     id = db.Column("ID", db.Integer, primary_key=True)
     name = db.Column("Name", db.String(10), nullable=False)
     release_version = db.Column("Release_Version", db.String(10), nullable=False)
-    status = db.Column("Status", Enum(StatusEnum), default=StatusEnum.Active, nullable=False)
 
     manager_id = db.Column(
         "Manager_ID",
         db.Integer,
-        db.ForeignKey("users.ID", ondelete="CASCADE", onupdate="CASCADE")
+        db.ForeignKey("users.ID")
     )
 
-    # Relationship to assignments
+    manager = db.relationship(
+        "User",
+        back_populates="managed_workgroups"
+    )
+
     assignments = db.relationship(
         "WorkgroupAssignment",
-        back_populates="workgroup",
-        cascade="all, delete"
+        back_populates="workgroup"
     )
 
     def __repr__(self):
