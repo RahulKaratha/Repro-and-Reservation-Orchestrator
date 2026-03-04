@@ -107,32 +107,42 @@
                 <h2 class="text-2xl font-bold text-gray-900 mb-1">Welcome back</h2>
                 <p class="text-sm text-gray-400 mb-8">Sign in to your account to continue</p>
 
-                {% with messages = get_flashed_messages() %}
-                  {% if messages %}
-                    <div class="mb-6 flex items-center gap-3 rounded-xl border border-green-300 bg-green-50 px-5 py-4 text-green-700">
-                        <div class="flex h-6 w-6 items-center justify-center rounded-full border border-green-500 text-green-600">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                        </div>
-                        <span class="text-sm font-medium">{{ messages[0] }}</span>
-                    </div>
-                  {% endif %}
-                {% endwith %}
-
-                <form method="POST" action="{{ url_for('user_bp.login') }}" class="space-y-6">
+                <form method="POST">
+                <div class="space-y-6">
+                    
                     <!-- Email -->
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Email address</label>
-                        <input type="email" name="email" placeholder="you@company.com" class="underline-input"/>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Email address
+                        </label>
+                        <input 
+                            type="email" 
+                            name="email"
+                            placeholder="you@company.com" 
+                            class="underline-input"
+                            required
+                        />
                     </div>
 
                     <!-- Password -->
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Password
+                        </label>
                         <div class="relative">
-                            <input type="password" id="passwordInput" name="password" placeholder="Enter your password" class="underline-input pr-7" required/>
-                            <button onclick="togglePassword()" type="button" style="position:absolute;right:0;top:6px;background:none;border:none;cursor:pointer;color:#9ca3af;">
+                            <input 
+                                type="password" 
+                                id="passwordInput" 
+                                name="password"
+                                placeholder="Enter your password" 
+                                class="underline-input pr-7"
+                                required
+                            />
+                            <button 
+                                onclick="togglePassword()" 
+                                type="button" 
+                                style="position:absolute;right:0;top:6px;background:none;border:none;cursor:pointer;color:#9ca3af;"
+                            >
                                 <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                                     <circle cx="12" cy="12" r="3"/>
@@ -140,7 +150,10 @@
                             </button>
                         </div>
                         <div class="flex justify-end mt-2">
-                            <a href="#" style="font-size:0.75rem;color:#7c3aed;font-weight:500;">Forgot password?</a>
+                            <a href="{{ url_for('auth.forgot_password') }}" 
+                            style="font-size:0.75rem;color:#7c3aed;font-weight:500;">
+                                Forgot password?
+                            </a>
                         </div>
                     </div>
 
@@ -159,14 +172,13 @@
                         </svg>
                         Sign in
                     </button>
-                </form>
+
+                </div>
+            </form>
 
                 <p class="text-center text-sm text-gray-400 mt-7">
                     Don't have an account?
-                    <a href="{{ url_for('user_bp.register') }}"
-       class="text-indigo-600 font-medium hover:underline">
-        Create account
-    </a>
+                    <a href= "{{ url_for('auth.register')}}" style="color:#7c3aed;font-weight:500;">Create account</a>
                 </p>
             </div>
         </div>
@@ -189,28 +201,3 @@ function togglePassword() {
 </body>
 </html>
 
-
-
-
-
-<div class="mb-6 flex items-center gap-3 rounded-xl border border-green-300 bg-green-50 px-5 py-4 text-green-700">
-
-    <!-- Icon -->
-    <div class="flex h-6 w-6 items-center justify-center rounded-full border border-green-500 text-green-600">
-        <svg xmlns="http://www.w3.org/2000/svg" 
-             class="h-4 w-4" 
-             fill="none" 
-             viewBox="0 0 24 24" 
-             stroke="currentColor" 
-             stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" 
-                  d="M5 13l4 4L19 7" />
-        </svg>
-    </div>
-
-    <!-- Message -->
-    <span class="text-sm font-medium">
-        Account created! Please sign in.
-    </span>
-
-</div>

@@ -3,40 +3,31 @@ from flask_login import UserMixin
 from sqlalchemy import Enum
 import enum
 
-class UserRole(enum.Enum):
-    engineer = "engineer"
-    manager = "manager"
+class RoleEnum(enum.Enum):
+    Engineer = "Engineer"
+    Manager = "Manager"
 
-class User(UserMixin, db.Model):
+class User(db.Model):
     __tablename__ = "users"
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column("ID", db.Integer, primary_key=True)
+    first_name = db.Column("First_Name", db.String(10), nullable=False)
+    last_name = db.Column("Last_Name", db.String(10))
+    email = db.Column("Email", db.String(100), unique=True, nullable=False)
+    password = db.Column("Password", db.String(255), nullable=False)
+    role = db.Column("Role", db.String(20), nullable=False)
 
-    first_name = db.Column(db.String(50), nullable=False)
-    last_name = db.Column(db.String(50), nullable=False)
-    email = db.Column(db.String(50), nullable=False, unique=True)
+    # Manager relationship
+    managed_workgroups = db.relationship(
+        "Workgroup",
+        back_populates="manager"
+    )
 
-    role = db.Column(Enum(UserRole), nullable=False)
+    # Engineer assignments
+    assignments = db.relationship(
+        "WorkgroupAssignment",
+        back_populates="employee"
+    )
 
-    password = db.Column(db.String(255), nullable=False)
-
-    workgroups_managed = db.relationship("Workgroup", backref="manager", lazy=True)
-    assignments = db.relationship("WorkgroupAssignment", backref="employee", lazy=True)
-
-
-class Workgroup(db.Model):
-    __tablename__ = "workgroups"
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(150), nullable=False)
-    release_version = db.Column(db.String(50))
-    status = db.Column(db.String(50))
-    manager_id = db.Column(db.Integer, db.ForeignKey("users.id"))
-
-
-class WorkgroupAssignment(db.Model):
-    __tablename__ = "workgroup_assignments"
-
-    id = db.Column(db.Integer, primary_key=True)
-    workgroup_id = db.Column(db.Integer, db.ForeignKey("workgroups.id"), nullable=False)
-    employee_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    def __repr__(self):
+        return f"<User {self.email}>"
