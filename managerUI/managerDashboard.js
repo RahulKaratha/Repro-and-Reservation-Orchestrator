@@ -214,12 +214,23 @@ function renderWorkgroups() {
         titleEl.textContent = `My Workgroups (${workgroups.length})`;
     }
 
-    if (filtered.length === 0) {
+    if (workgroups.length === 0) {
         dom.emptyState.classList.remove('hidden');
+        const bottomAction = document.querySelector('.workgroups-bottom-action');
+        if (bottomAction) bottomAction.style.display = '';
         return;
     }
 
     dom.emptyState.classList.add('hidden');
+    const bottomAction = document.querySelector('.workgroups-bottom-action');
+    if (bottomAction) bottomAction.style.display = 'none';
+
+    const filterEmpty = document.getElementById('filterEmptyState');
+    if (filtered.length === 0) {
+        if (filterEmpty) filterEmpty.classList.remove('hidden');
+        return;
+    }
+    if (filterEmpty) filterEmpty.classList.add('hidden');
 
     filtered.forEach(wg => {
         const card = document.createElement('div');
@@ -488,7 +499,29 @@ async function handleCreateWorkgroup(e) {
     const releaseVersion = dom.releaseVersion.value.trim();
     const isCompleted = dom.markCompleted.checked;
 
-    if (!name || !releaseVersion) return;
+    // Clear previous errors
+    const errorBanner = document.getElementById('formErrorBanner');
+    const errorText = document.getElementById('formErrorText');
+    dom.workgroupName.classList.remove('input-error');
+    dom.releaseVersion.classList.remove('input-error');
+
+    // Validate required fields
+    if (!name) {
+        errorText.textContent = 'Please enter a workgroup name.';
+        errorBanner.classList.remove('hidden');
+        dom.workgroupName.classList.add('input-error');
+        dom.workgroupName.focus();
+        return;
+    }
+    if (!releaseVersion) {
+        errorText.textContent = 'Please enter a release version.';
+        errorBanner.classList.remove('hidden');
+        dom.releaseVersion.classList.add('input-error');
+        dom.releaseVersion.focus();
+        return;
+    }
+
+    errorBanner.classList.add('hidden');
 
     const selectedEngineers = Array.from($$('#engineersList input:checked')).map(cb => parseInt(cb.value));
 
@@ -552,11 +585,12 @@ async function handleCreateWorkgroup(e) {
 function updateStepIndicators() {
     const hasName = dom.workgroupName.value.trim().length > 0;
     const hasRelease = dom.releaseVersion.value.trim().length > 0;
+    const hasEngineers = document.querySelectorAll('#engineersList input:checked').length > 0;
     const steps = $$('.step');
 
-    steps[0].classList.toggle('active', true);
-    steps[1].classList.toggle('active', hasName);
-    steps[2].classList.toggle('active', hasName && hasRelease);
+    steps[0].classList.toggle('active', hasName);
+    steps[1].classList.toggle('active', hasRelease);
+    steps[2].classList.toggle('active', hasEngineers);
 
     // Toggle filled state for input label icons
     const nameLabel = dom.workgroupName.previousElementSibling;
@@ -567,6 +601,12 @@ function updateStepIndicators() {
     const releaseLabel = dom.releaseVersion.previousElementSibling;
     if (releaseLabel && releaseLabel.classList.contains('form-label')) {
         releaseLabel.classList.toggle('filled', hasRelease);
+    }
+
+    // Toggle filled state for engineers label icon
+    const engineersLabel = document.querySelector('.form-label--engineers');
+    if (engineersLabel) {
+        engineersLabel.classList.toggle('filled', hasEngineers);
     }
 }
 
@@ -636,9 +676,19 @@ function initEventListeners() {
     // Form submit
     dom.createWorkgroupForm.addEventListener('submit', handleCreateWorkgroup);
 
-    // Step indicator live update
-    dom.workgroupName.addEventListener('input', updateStepIndicators);
-    dom.releaseVersion.addEventListener('input', updateStepIndicators);
+    // Step indicator live update + clear validation errors on input
+    dom.workgroupName.addEventListener('input', () => {
+        updateStepIndicators();
+        dom.workgroupName.classList.remove('input-error');
+        const banner = document.getElementById('formErrorBanner');
+        if (banner) banner.classList.add('hidden');
+    });
+    dom.releaseVersion.addEventListener('input', () => {
+        updateStepIndicators();
+        dom.releaseVersion.classList.remove('input-error');
+        const banner = document.getElementById('formErrorBanner');
+        if (banner) banner.classList.add('hidden');
+    });
 
     // Filter tabs
     dom.filterTabs.addEventListener('click', (e) => {
