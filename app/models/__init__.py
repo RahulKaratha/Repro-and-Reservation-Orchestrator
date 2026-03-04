@@ -1,3 +1,3 @@
 from .user import User
-from .Workgroup import Workgroup
-from .WorkgroupAssignment import WorkgroupAssignment
+from .workgroup import Workgroup
+from .workgroupAssignment import WorkgroupAssignment
