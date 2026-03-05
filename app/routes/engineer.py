@@ -13,7 +13,6 @@ def engineer_dashboard():
     return render_template("engineerDashboard.html")
 
 
-
 @engineer.route("/api/engineer/stats")
 def engineer_stats():
 
@@ -61,4 +60,10 @@ def engineer_workgroups():
         })
 
     return jsonify(result)
+
+# LOGOUT
+@engineer.route("/api/auth/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return jsonify({"success": True})
 

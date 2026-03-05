@@ -139,13 +139,24 @@ def create_workgroup():
 
     db.session.commit()
 
+    engineers = []
+
+    for eid in data.get("engineer_ids", []):
+        user = User.query.get(eid)
+
+        engineers.append({
+            "id": user.id,
+            "name": f"{user.first_name} {user.last_name}",
+            "email": user.email
+        })
+
     return jsonify({
         "id": wg.id,
         "name": wg.name,
         "release_version": wg.release_version,
-        "is_completed": wg.is_completed,
+        "is_completed": True if wg.is_completed == "Completed" else False,
         "created_at": wg.created_at,
-        "engineers": []
+        "engineers": engineers
     })
 
 
@@ -154,28 +165,45 @@ def create_workgroup():
 def update_workgroup(id):
 
     wg = Workgroup.query.get_or_404(id)
-
     data = request.json
 
     wg.name = data.get("name", wg.name)
     wg.release_version = data.get("release_version", wg.release_version)
-    wg.is_completed = "Completed" if data.get("is_completed") else "Active"
+
+    if "is_completed" in data:
+        wg.is_completed = "Completed" if data["is_completed"] else "Active"
+
+    if "engineer_ids" in data:
+
+        WorkgroupAssignment.query.filter_by(workgroup_id=id).delete()
+
+        for eid in data["engineer_ids"]:
+            db.session.add(
+                WorkgroupAssignment(
+                    workgroup_id=id,
+                    employee_id=eid
+                )
+            )
 
     db.session.commit()
 
-    return jsonify({"success": True})
+    return jsonify({
+        "id": wg.id,
+        "name": wg.name,
+        "release_version": wg.release_version,
+        "is_completed": True if wg.is_completed == "Completed" else False,
+        "created_at": wg.created_at,
+        "engineers": []
+    })
 
 
 # DELETE WORKGROUP
 @manager.route("/api/workgroups/<int:id>", methods=["DELETE"])
 def delete_workgroup(id):
-
     WorkgroupAssignment.query.filter_by(workgroup_id=id).delete()
 
     wg = Workgroup.query.get_or_404(id)
 
     db.session.delete(wg)
-
     db.session.commit()
-
     return jsonify({"success": True})
