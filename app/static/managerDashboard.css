@@ -658,6 +658,37 @@ body {
     margin-top: 20px;
 }
 
+/* ── Filter Empty State ── */
+.filter-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 16px 40px;
+    text-align: center;
+}
+
+.filter-empty-state.hidden {
+    display: none;
+}
+
+.filter-empty-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+}
+
+.filter-empty-text {
+    font-size: 13.5px;
+    color: #94a3b8;
+    font-weight: 500;
+}
+
 /* ── Modal Overlay ── */
 .modal-overlay {
     position: fixed;
@@ -797,7 +828,7 @@ body {
     flex-shrink: 0;
 }
 
-/* Filled / Active state for label icons (solid blue) */
+/* Filled / Active state for label icons */
 .form-label.filled svg circle {
     fill: #2563eb;
     stroke: #2563eb;
@@ -805,12 +836,57 @@ body {
 }
 
 .form-label.filled svg path {
-    stroke: #ffffff;
+    stroke: #2563eb;
     transition: all 0.2s ease;
+}
+
+/* Name label: white checkmark on blue circle */
+.form-label[for="workgroupName"].filled svg path {
+    stroke: #ffffff;
 }
 
 .required {
     color: #ef4444;
+}
+
+/* ── Form Validation Error ── */
+.form-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    margin-bottom: 18px;
+    animation: errorSlideIn 0.25s ease;
+}
+
+.form-error-banner.hidden {
+    display: none;
+}
+
+.form-error-banner span {
+    font-size: 13px;
+    font-weight: 500;
+    color: #dc2626;
+}
+
+.form-input.input-error {
+    border-color: #dc2626;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+@keyframes errorSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .form-input {
