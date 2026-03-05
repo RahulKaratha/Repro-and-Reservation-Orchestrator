@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.extensions import db
 from app.models.user import User
+from app.auth_utils import generate_reset_token, verify_reset_token, send_reset_email
 
 auth = Blueprint('auth', __name__)
 
@@ -73,14 +74,48 @@ def register():
 def forgot_password():
     if request.method == 'POST':
         email = request.form['email']
-
-        # Check if user exists
         user = User.query.filter_by(email=email).first()
 
+        # Always show the same message to prevent email enumeration
         if user:
-            flash("Reset instructions would be sent to this email.", "info")
-            # Later we will implement real token system
-        else:
-            flash("If this email exists, reset instructions will be sent.", "info")
+            try:
+                send_reset_email(user)
+            except Exception as e:
+                print(f"EMAIL ERROR: {e}")
+                flash("Unable to send email. Please try again later.", "danger")
+                return render_template("forgot_password.html")
+            
+        flash("If this email exists, a reset link has been sent.", "info")
+        return redirect(url_for('auth.forgot_password'))
 
     return render_template("forgot_password.html")
+
+
+# ---------------- RESET PASSWORD ----------------
+@auth.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    email = verify_reset_token(token)
+    if email is None:
+        flash("The reset link is invalid or has expired.", "danger")
+        return redirect(url_for('auth.forgot_password'))
+
+    if request.method == 'POST':
+        password = request.form['password']
+        confirm_password = request.form['confirm_password']
+
+        if password != confirm_password:
+            flash("Passwords do not match!", "danger")
+            return render_template("reset_password.html", token=token)
+
+        user = User.query.filter_by(email=email).first()
+        if user is None:
+            flash("User not found.", "danger")
+            return redirect(url_for('auth.forgot_password'))
+
+        user.password = generate_password_hash(password)
+        db.session.commit()
+
+        flash("Your password has been reset successfully!", "success")
+        return redirect(url_for('auth.login'))
+
+    return render_template("reset_password.html", token=token)
