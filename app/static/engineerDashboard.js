@@ -48,16 +48,18 @@ const dom = {
 ===================================================== */
 
 async function apiFetch(path, options = {}) {
-
-    const response = await fetch(`${API_BASE}${path}`, {
-        credentials: "include",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        ...options
-    });
-
-    return await response.json();
+    try {
+        const res = await fetch(`${API_BASE}${path}`, {
+            headers: { 'Content-Type': 'application/json', ...options.headers },
+            credentials: 'include',
+            ...options,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+        return await res.json();
+    } catch (err) {
+        console.warn(`[API] ${options.method || 'GET'} ${path} → ${err.message}`);
+        return null;
+    }
 }
 
 /* =====================================================
@@ -85,7 +87,7 @@ async function loadCurrentUser() {
     dom.profileEmail.textContent = data.email;
 
     dom.welcomeHeading.classList.remove("loading-text");
-    dom.welcomeHeading.textContent = `Welcome back, ${data.name}!`;
+    dom.welcomeHeading.textContent = `Welcome, ${data.name}!`;
 }
 
 /* =====================================================
@@ -105,14 +107,18 @@ async function loadStats() {
    Load Workgroups
 ===================================================== */
 
-async function loadWorkgroups() {
+async function loadWorkgroups(skipApiIfLocal = false) {
+    dom.workgroupsLoading.classList.remove('hidden');
+    dom.emptyState.classList.add('hidden');
+    // Don't blank the UI if we're just refreshing local state
+    if (!skipApiIfLocal) dom.workgroupsList.innerHTML = '';
 
-    const data = await apiFetch("/api/engineer/workgroups");
+    const data = await apiFetch('/api/engineer/workgroups');
+    if (data && Array.isArray(data)) {
+        workgroups = data;
+    }
 
-    workgroups = data || [];
-
-    dom.workgroupsLoading.classList.add("hidden");
-
+    dom.workgroupsLoading.classList.add('hidden');
     renderWorkgroups();
 }
 
@@ -121,71 +127,47 @@ async function loadWorkgroups() {
 ===================================================== */
 
 function renderWorkgroups() {
-
     dom.workgroupsList.innerHTML = "";
-
     if (workgroups.length === 0) {
-
         dom.emptyState.classList.remove("hidden");
         return;
     }
-
     dom.emptyState.classList.add("hidden");
-
     workgroups.forEach(wg => {
-
         const card = document.createElement("div");
         card.className = "workgroup-card";
-
         const status = wg.is_completed ? "Completed" : "Active";
-
         const date = new Date(wg.created_at)
             .toLocaleDateString();
-
         card.innerHTML = `
             <div class="wg-card-top-bar"></div>
-
             <div class="wg-card-header">
-
                 <div class="wg-card-header-left">
-
                     <span class="wg-card-initials">
                         ${wg.name.substring(0,2)}
                     </span>
-
                     <h4 class="wg-card-name">
                         ${wg.name}
                     </h4>
-
                 </div>
-
                 <span class="status-badge">
                     ${status}
                 </span>
-
             </div>
-
             <div class="wg-card-release">
-
                 <span class="wg-release-badge">
                     Release
                 </span>
-
                 <span class="wg-release-version">
                     ${wg.release_version}
                 </span>
-
             </div>
-
             <div class="wg-card-footer">
-
                 <span class="wg-card-date">
                     Created ${date}
                 </span>
-
             </div>
         `;
-
         dom.workgroupsList.appendChild(card);
     });
 }
@@ -205,15 +187,11 @@ async function logout() {
 }
 
 function toggleProfileDropdown() {
-
     dom.profileDropdown.classList.toggle("hidden");
-
 }
 
 function closeDropdownOnOutsideClick(event) {
-
     if (!dom.profileTrigger.contains(event.target)) {
-
         dom.profileDropdown.classList.add("hidden");
 
     }
@@ -225,11 +203,8 @@ function closeDropdownOnOutsideClick(event) {
 ===================================================== */
 
 function setupEvents() {
-
     dom.btnLogout.addEventListener("click", logout);
-
     dom.profileTrigger.addEventListener("click", toggleProfileDropdown);
-
     document.addEventListener("click", closeDropdownOnOutsideClick);
 
 }
@@ -239,14 +214,11 @@ function setupEvents() {
 ===================================================== */
 
 async function init() {
-
     await loadCurrentUser();
-
     await Promise.all([
         loadStats(),
         loadWorkgroups()
     ]);
-
     setupEvents();
 }
 

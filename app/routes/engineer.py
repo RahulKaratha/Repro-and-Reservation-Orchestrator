@@ -26,8 +26,8 @@ def engineer_stats():
     workgroups = [Workgroup.query.get(a.workgroup_id) for a in assignments]
 
     assigned = len(workgroups)
-    active = len([w for w in workgroups if not w.is_completed])
-    completed = len([w for w in workgroups if w.is_completed])
+    active = len([w for w in workgroups if w.is_completed == "Active"])
+    completed = len([w for w in workgroups if w.is_completed == "Completed"])
 
     return jsonify({
         "assigned": assigned,
@@ -54,10 +54,11 @@ def engineer_workgroups():
 
         result.append({
             "id": wg.id,
-            "name": wg.workgroup_name,
+            "name": wg.name,
             "release_version": wg.release_version,
-            "is_completed": wg.is_completed,
+            "is_completed": True if wg.is_completed == "Completed" else False,
             "created_at": wg.created_at
         })
 
     return jsonify(result)
+
