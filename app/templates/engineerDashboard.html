@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RRO — Engineer Dashboard</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='managerDashboard.css') }}">
+
+</head>
+
+
+<body>
+
+<!-- NAVBAR -->
+
+<nav class="navbar">
+
+    <div class="navbar-left">
+
+        <div class="navbar-logo">
+            <svg width="28" height="28" viewBox="0 0 28 28">
+                <rect width="28" height="28" rx="6" fill="#7c3aed"/>
+            </svg>
+        </div>
+
+        <div class="navbar-brand">
+            <span class="brand-name">RRO</span>
+            <span class="brand-tagline">
+                Repro & Reservation Orchestrator
+            </span>
+        </div>
+
+    </div>
+
+
+    <div class="navbar-right" id="profileDropdownTrigger">
+
+    <div class="user-avatar loading-pulse" id="userAvatar"></div>
+
+    <div class="user-info">
+        <span class="user-name loading-text" id="userName"></span>
+        <span class="user-role-badge">Engineer</span>
+    </div>
+
+    <svg class="chevron-down" width="16" height="16" viewBox="0 0 16 16">
+        <path d="M4 6l4 4 4-4"
+              stroke="#94a3b8"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"/>
+    </svg>
+
+    <!-- Profile Dropdown -->
+
+    <div class="profile-dropdown hidden" id="profileDropdown">
+
+        <div class="profile-dropdown-header">
+            <span class="profile-email" id="profileEmail"></span>
+        </div>
+
+        <button class="profile-dropdown-item profile-dropdown-item--red" id="btnLogout">
+            Logout
+        </button>
+
+    </div>
+
+</div>
+</nav>
+<!-- MAIN DASHBOARD -->
+
+<main class="dashboard">
+
+<section class="welcome-section">
+
+    <div class="welcome-text">
+
+        <span class="manager-label">
+            ENGINEER
+        </span>
+
+        <h1 class="welcome-heading loading-text" id="welcomeHeading"></h1>
+
+        <p class="welcome-sub">
+            View the workgroups assigned to you
+        </p>
+
+    </div>
+
+</section>
+
+
+
+<!-- STATS -->
+
+<section class="stats-row">
+
+    <div class="stat-card">
+
+        <div class="stat-detail">
+            <span class="stat-label">ASSIGNED</span>
+            <span class="stat-value" id="statAssigned">—</span>
+            <span class="stat-sublabel">workgroups</span>
+        </div>
+
+    </div>
+
+
+    <div class="stat-card">
+
+        <div class="stat-detail">
+            <span class="stat-label">ACTIVE</span>
+            <span class="stat-value" id="statActive">—</span>
+            <span class="stat-sublabel">in progress</span>
+        </div>
+
+    </div>
+
+
+    <div class="stat-card">
+
+        <div class="stat-detail">
+            <span class="stat-label">COMPLETED</span>
+            <span class="stat-value" id="statCompleted">—</span>
+            <span class="stat-sublabel">finished</span>
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- WORKGROUPS -->
+
+<section class="workgroups-section">
+
+<div class="workgroups-header">
+
+    <h2 class="workgroups-title">
+        My Assignments
+    </h2>
+
+</div>
+
+
+
+<div class="workgroups-loading" id="workgroupsLoading">
+
+    <div class="spinner"></div>
+    <p>Loading workgroups…</p>
+
+</div>
+
+
+
+<div class="workgroups-list" id="workgroupsList"></div>
+
+
+
+<div class="empty-state hidden" id="emptyState">
+
+    <h3 class="empty-state-heading">
+        No workgroups assigned
+    </h3>
+
+    <p class="empty-state-text">
+        Your manager has not assigned any workgroups yet.
+    </p>
+
+</div>
+
+</section>
+
+</main>
+
+
+
+<script src="{{ url_for('static', filename='engineerDashboard.js') }}"></script>
+
+</body>
+</html>
