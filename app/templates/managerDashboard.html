@@ -169,6 +169,18 @@
                     releases.</p>
             </div>
 
+            <!-- Filter Empty State — shown when filter yields no results -->
+            <div class="filter-empty-state hidden" id="filterEmptyState">
+                <div class="filter-empty-icon">
+                    <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                        <rect x="4" y="8" width="32" height="24" rx="3" stroke="#94a3b8" stroke-width="1.8" />
+                        <path d="M4 14h32M12 20h16M16 26h8" stroke="#94a3b8" stroke-width="1.8"
+                            stroke-linecap="round" />
+                    </svg>
+                </div>
+                <p class="filter-empty-text">No workgroups match this filter.</p>
+            </div>
+
             <div class="workgroups-bottom-action">
                 <button class="btn-create-workgroup" id="btnCreateWorkgroupBottom" type="button">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -214,8 +226,17 @@
             </div>
 
             <!-- Form — submits via JS to POST/PATCH /api/workgroups -->
-            <form id="createWorkgroupForm" autocomplete="off">
+            <form id="createWorkgroupForm" autocomplete="off" novalidate>
                 <input type="hidden" id="workgroupId" value="" />
+
+                <!-- Validation Error Banner -->
+                <div class="form-error-banner hidden" id="formErrorBanner">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="7" stroke="#dc2626" stroke-width="1.5" />
+                        <path d="M8 5v3.5M8 10.5v.5" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round" />
+                    </svg>
+                    <span id="formErrorText">Please enter a workgroup name.</span>
+                </div>
 
                 <div class="form-group">
                     <label class="form-label" for="workgroupName">
@@ -227,7 +248,7 @@
                         Workgroup Name <span class="required">*</span>
                     </label>
                     <input type="text" id="workgroupName" class="form-input"
-                        placeholder="e.g. Bug Reproduction Team Alpha" required />
+                        placeholder="e.g. Bug Reproduction Team Alpha" />
                 </div>
 
                 <div class="form-group">
@@ -238,8 +259,7 @@
                         </svg>
                         Release Version <span class="required">*</span>
                     </label>
-                    <input type="text" id="releaseVersion" class="form-input" placeholder="e.g. v2.4.1 or Sprint 12"
-                        required />
+                    <input type="text" id="releaseVersion" class="form-input" placeholder="e.g. v2.4.1 or Sprint 12" />
                 </div>
 
                 <div class="form-group">

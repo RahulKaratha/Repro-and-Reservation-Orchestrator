@@ -45,8 +45,8 @@ def stats():
     workgroups = Workgroup.query.filter_by(manager_id=manager_id).all()
 
     total = len(workgroups)
-    active = len([w for w in workgroups if not w.is_completed])
-    completed = len([w for w in workgroups if w.is_completed])
+    active = len([w for w in workgroups if w.is_completed == "Active"])
+    completed = len([w for w in workgroups if w.is_completed == "Completed"])
     engineers = User.query.filter_by(role="Engineer").count()
 
     return jsonify({
@@ -104,9 +104,9 @@ def workgroups():
 
         result.append({
             "id": wg.id,
-            "name": wg.workgroup_name,
+            "name": wg.name,
             "release_version": wg.release_version,
-            "is_completed": wg.is_completed,
+            "is_completed": True if wg.is_completed == "Completed" else False,
             "created_at": wg.created_at,
             "engineers": engineers
         })
@@ -121,10 +121,10 @@ def create_workgroup():
     data = request.json
 
     wg = Workgroup(
-        workgroup_name=data["name"],
+        name=data["name"],
         release_version=data["release_version"],
         manager_id=session["user_id"],
-        is_completed=data.get("is_completed", False)
+        is_completed="Completed" if data.get("is_completed") else "Active"
     )
 
     db.session.add(wg)
@@ -141,7 +141,7 @@ def create_workgroup():
 
     return jsonify({
         "id": wg.id,
-        "name": wg.workgroup_name,
+        "name": wg.name,
         "release_version": wg.release_version,
         "is_completed": wg.is_completed,
         "created_at": wg.created_at,
@@ -157,9 +157,9 @@ def update_workgroup(id):
 
     data = request.json
 
-    wg.workgroup_name = data.get("name", wg.workgroup_name)
+    wg.name = data.get("name", wg.name)
     wg.release_version = data.get("release_version", wg.release_version)
-    wg.is_completed = data.get("is_completed", wg.is_completed)
+    wg.is_completed = "Completed" if data.get("is_completed") else "Active"
 
     db.session.commit()
 
