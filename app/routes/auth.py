@@ -84,11 +84,3 @@ def forgot_password():
             flash("If this email exists, reset instructions will be sent.", "info")
 
     return render_template("forgot_password.html")
-
-
-# ---------------- LOGOUT ----------------
-@auth.route('/logout')
-def logout():
-    session.clear()
-    flash("Logged out successfully!", "info")
-    return redirect(url_for('auth.login'))
