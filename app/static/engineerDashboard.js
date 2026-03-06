@@ -1,34 +1,19 @@
-/* =====================================================
-   RRO Engineer Dashboard
-===================================================== */
+const API_BASE = ""
 
-const API_BASE = "";
+let currentUser = null
+let workgroups = []
+let currentFilter = "all"
 
-/* =====================================================
-   State
-===================================================== */
-
-let currentUser = null;
-let workgroups = [];
-
-/* =====================================================
-   Helpers
-===================================================== */
-
-const $ = (selector) => document.querySelector(selector);
-
-/* =====================================================
-   DOM Elements
-===================================================== */
+const $ = (s) => document.querySelector(s)
 
 const dom = {
 
     userName: $("#userName"),
     userAvatar: $("#userAvatar"),
-    profileEmail: $("#profileEmail"),
+    userRoleBadge: $("#userRoleBadge"),
     welcomeHeading: $("#welcomeHeading"),
 
-    statAssigned: $("#statAssigned"),
+    statTotal: $("#statTotal"),
     statActive: $("#statActive"),
     statCompleted: $("#statCompleted"),
 
@@ -36,188 +21,205 @@ const dom = {
     workgroupsLoading: $("#workgroupsLoading"),
     emptyState: $("#emptyState"),
 
-    btnLogout: $("#btnLogout"),
-
+    profileDropdownTrigger: $("#profileDropdownTrigger"),
     profileDropdown: $("#profileDropdown"),
-    profileTrigger: $("#profileDropdownTrigger")
+    profileEmail: $("#profileEmail"),
+    btnLogout: $("#btnLogout")
 
-};
-
-/* =====================================================
-   API Helper
-===================================================== */
+}
 
 async function apiFetch(path, options = {}) {
-    try {
-        const res = await fetch(`${API_BASE}${path}`, {
-            headers: { 'Content-Type': 'application/json', ...options.headers },
-            credentials: 'include',
-            ...options,
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-        return await res.json();
-    } catch (err) {
-        console.warn(`[API] ${options.method || 'GET'} ${path} → ${err.message}`);
-        return null;
-    }
+
+    const res = await fetch(API_BASE + path, {
+    credentials: "include",
+    headers: {"Content-Type":"application/json"},
+    ...options
+    })
+
+    return await res.json()
+
 }
 
-/* =====================================================
-   Load User
-===================================================== */
 
-async function loadCurrentUser() {
+async function loadCurrentUser(){
 
-    const data = await apiFetch("/api/auth/me");
+    const data = await apiFetch("/api/auth/me")
 
-    currentUser = data;
+    currentUser = data
 
     const initials = data.fullName
-        .split(" ")
-        .map(n => n[0])
-        .join("")
-        .toUpperCase();
+    .split(" ")
+    .map(n=>n[0])
+    .join("")
+    .toUpperCase()
 
-    dom.userAvatar.classList.remove("loading-pulse");
-    dom.userAvatar.textContent = initials;
+    dom.userAvatar.textContent = initials
+    dom.userName.textContent = data.fullName
+    dom.userRoleBadge.textContent = "Engineer"
+    dom.profileEmail.textContent = data.email
 
-    dom.userName.classList.remove("loading-text");
-    dom.userName.textContent = data.fullName;
+    dom.welcomeHeading.textContent =
+    `Welcome back, ${data.name}!`
 
-    dom.profileEmail.textContent = data.email;
-
-    dom.welcomeHeading.classList.remove("loading-text");
-    dom.welcomeHeading.textContent = `Welcome, ${data.name}!`;
 }
 
-/* =====================================================
-   Load Stats
-===================================================== */
 
-async function loadStats() {
+async function loadStats(){
 
-    const stats = await apiFetch("/api/engineer/stats");
+    const stats = await apiFetch("/api/stats")
 
-    dom.statAssigned.textContent = stats.assigned;
-    dom.statActive.textContent = stats.active;
-    dom.statCompleted.textContent = stats.completed;
+    dom.statTotal.textContent = stats.total
+    dom.statActive.textContent = stats.active
+    dom.statCompleted.textContent = stats.completed
+
 }
 
-/* =====================================================
-   Load Workgroups
-===================================================== */
 
-async function loadWorkgroups(skipApiIfLocal = false) {
-    dom.workgroupsLoading.classList.remove('hidden');
-    dom.emptyState.classList.add('hidden');
-    // Don't blank the UI if we're just refreshing local state
-    if (!skipApiIfLocal) dom.workgroupsList.innerHTML = '';
+async function loadWorkgroups(){
 
-    const data = await apiFetch('/api/engineer/workgroups');
-    if (data && Array.isArray(data)) {
-        workgroups = data;
-    }
+    dom.workgroupsLoading.classList.remove("hidden")
 
-    dom.workgroupsLoading.classList.add('hidden');
-    renderWorkgroups();
+    const data = await apiFetch("/api/workgroups")
+
+    workgroups = data
+
+    dom.workgroupsLoading.classList.add("hidden")
+
+    renderWorkgroups()
+
 }
 
-/* =====================================================
-   Render Workgroups
-===================================================== */
 
-function renderWorkgroups() {
-    dom.workgroupsList.innerHTML = "";
-    if (workgroups.length === 0) {
-        dom.emptyState.classList.remove("hidden");
-        return;
-    }
-    dom.emptyState.classList.add("hidden");
-    workgroups.forEach(wg => {
-        const card = document.createElement("div");
-        card.className = "workgroup-card";
-        const status = wg.is_completed ? "Completed" : "Active";
-        const date = new Date(wg.created_at)
-            .toLocaleDateString();
-        card.innerHTML = `
-            <div class="wg-card-top-bar"></div>
-            <div class="wg-card-header">
-                <div class="wg-card-header-left">
-                    <span class="wg-card-initials">
-                        ${wg.name.substring(0,2)}
-                    </span>
-                    <h4 class="wg-card-name">
-                        ${wg.name}
-                    </h4>
-                </div>
-                <span class="status-badge">
-                    ${status}
-                </span>
-            </div>
-            <div class="wg-card-release">
-                <span class="wg-release-badge">
-                    Release
-                </span>
-                <span class="wg-release-version">
-                    ${wg.release_version}
-                </span>
-            </div>
-            <div class="wg-card-footer">
-                <span class="wg-card-date">
-                    Created ${date}
-                </span>
-            </div>
-        `;
-        dom.workgroupsList.appendChild(card);
-    });
-}
+function renderWorkgroups(){
 
-/* =====================================================
-   Logout
-===================================================== */
+    dom.workgroupsList.innerHTML=""
 
-async function logout() {
-    await fetch("/api/auth/logout", {
-        method: "POST",
-        credentials: "include"
-    });
-    window.location.href = "/";
-}
+    if(workgroups.length===0){
 
-function toggleProfileDropdown() {
-    dom.profileDropdown.classList.toggle("hidden");
-}
-
-function closeDropdownOnOutsideClick(event) {
-    if (!dom.profileTrigger.contains(event.target)) {
-        dom.profileDropdown.classList.add("hidden");
+    dom.emptyState.classList.remove("hidden")
+    return
 
     }
 
+    dom.emptyState.classList.add("hidden")
+
+    workgroups.forEach(wg=>{
+
+    const card = document.createElement("div")
+
+    card.className="workgroup-card"
+
+    const statusClass =
+    wg.is_completed ?
+    "status-badge--completed" :
+    "status-badge--active"
+
+    const statusText =
+    wg.is_completed ?
+    "Completed":
+    "Active"
+
+    const date = new Date(wg.created_at)
+    .toLocaleDateString()
+
+    const engineers =
+    wg.engineers.length
+
+    card.innerHTML=`
+
+    <div class="wg-card-top-bar"></div>
+
+    <div class="wg-card-header">
+
+    <div class="wg-card-header-left">
+
+    <span class="wg-card-initials">
+    ${wg.name.substring(0,2)}
+    </span>
+
+    <h4 class="wg-card-name">
+    ${wg.name}
+    </h4>
+
+    </div>
+
+    <span class="status-badge ${statusClass}">
+    ${statusText}
+    </span>
+
+    </div>
+
+    <div class="wg-card-release">
+
+    <span class="wg-release-badge">
+    Release
+    </span>
+
+    <span class="wg-release-version">
+    ${wg.release_version}
+    </span>
+
+    </div>
+
+    <div class="wg-card-engineers">
+
+    ${engineers} engineer${engineers>1?"s":""} assigned
+
+    </div>
+
+    <div class="wg-card-footer">
+
+    <span class="wg-card-date">
+    ${date}
+    </span>
+
+    </div>
+
+    `
+
+    dom.workgroupsList.appendChild(card)
+
+    })
+
 }
 
-/* =====================================================
-   Event Listeners
-===================================================== */
 
-function setupEvents() {
-    dom.btnLogout.addEventListener("click", logout);
-    dom.profileTrigger.addEventListener("click", toggleProfileDropdown);
-    document.addEventListener("click", closeDropdownOnOutsideClick);
+async function logout(){
+
+    await fetch("/api/auth/logout",{
+    method:"POST",
+    credentials:"include"
+    })
+
+    window.location="/"
 
 }
 
-/* =====================================================
-   Initialize Dashboard
-===================================================== */
 
-async function init() {
-    await loadCurrentUser();
+function setupEvents(){
+
+    dom.btnLogout.addEventListener("click",logout)
+
+    dom.profileDropdownTrigger.addEventListener("click",()=>{
+
+    dom.profileDropdown.classList.toggle("hidden")
+
+    })
+
+}
+
+
+async function init(){
+
+    await loadCurrentUser()
+
     await Promise.all([
-        loadStats(),
-        loadWorkgroups()
-    ]);
-    setupEvents();
+    loadStats(),
+    loadWorkgroups()
+    ])
+
+    setupEvents()
+
 }
 
-init();
+init()

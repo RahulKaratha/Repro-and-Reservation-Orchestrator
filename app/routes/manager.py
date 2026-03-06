@@ -173,10 +173,13 @@ def update_workgroup(id):
     if "is_completed" in data:
         wg.is_completed = "Completed" if data["is_completed"] else "Active"
 
+    # Update engineer assignments
     if "engineer_ids" in data:
 
+        # remove existing assignments
         WorkgroupAssignment.query.filter_by(workgroup_id=id).delete()
 
+        # add new assignments
         for eid in data["engineer_ids"]:
             db.session.add(
                 WorkgroupAssignment(
@@ -187,13 +190,27 @@ def update_workgroup(id):
 
     db.session.commit()
 
+    # fetch engineers again for response
+    assignments = WorkgroupAssignment.query.filter_by(workgroup_id=id).all()
+
+    engineers = []
+
+    for a in assignments:
+        user = User.query.get(a.employee_id)
+
+        engineers.append({
+            "id": user.id,
+            "name": f"{user.first_name} {user.last_name}",
+            "email": user.email
+        })
+
     return jsonify({
         "id": wg.id,
         "name": wg.name,
         "release_version": wg.release_version,
         "is_completed": True if wg.is_completed == "Completed" else False,
         "created_at": wg.created_at,
-        "engineers": []
+        "engineers": engineers
     })
 
 
