@@ -19,14 +19,15 @@ def login():
             session['user_id'] = user.id
             session['role'] = user.role
 
-            flash("Login Successful!", "success")
 
             if user.role == "Engineer":
                 return redirect(url_for('engineer.engineer_dashboard'))
             elif user.role == "Manager":
                 return redirect(url_for('manager.manager_dashboard'))
-
-        flash("Invalid Email or Password", "danger")
+            else:
+                flash(f"Unknown role: {user.role}", "danger")
+        else:
+            flash("Invalid Email or Password", "danger")
 
     return render_template("login.html")
 

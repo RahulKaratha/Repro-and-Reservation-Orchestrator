@@ -30,6 +30,17 @@
             transition: border-color 0.2s;
         }
         .underline-input:focus { outline: none; border-bottom-color: #7c3aed; }
+        /* Hide default browser password reveal icon */
+        input[type="password"]::-ms-reveal,
+        input[type="password"]::-ms-clear {
+            display: none;
+        }
+        input[type="password"]::-webkit-credentials-auto-fill-button,
+        input[type="password"]::-webkit-clear-button,
+        input[type="password"]::-webkit-inner-spin-button,
+        input[type="password"]::-webkit-outer-spin-button {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
@@ -157,8 +168,8 @@
                 class="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 required>
             <option value="" disabled selected>Select your role</option>
-            <option value="engineer">Engineer</option>
-            <option value="manager">Manager</option>
+            <option value="Engineer">Engineer</option>
+            <option value="Manager">Manager</option>
         </select>
     </div>
 
