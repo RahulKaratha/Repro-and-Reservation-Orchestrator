@@ -140,34 +140,6 @@ flask run
 
 The application will be available at: `http://127.0.0.1:5000/`
 
-## 📁 Project Structure
-
-```
-Repro_and_Reservation_Orchestrator/
-├── app/
-│   ├── models/              # Database models
-│   │   ├── user.py
-│   │   ├── workgroup.py
-│   │   └── workgroupAssignment.py
-│   ├── routes/              # API endpoints and views
-│   │   ├── auth.py
-│   │   ├── engineer.py
-│   │   └── manager.py
-│   ├── services/            # Business logic
-│   ├── static/              # CSS, JavaScript, images
-│   ├── templates/           # HTML templates
-│   ├── __init__.py         # App factory
-│   ├── auth_utils.py       # Authentication utilities
-│   ├── config.py           # Configuration classes
-│   └── extensions.py       # Flask extensions
-├── migrations/              # Database migrations
-├── .env                    # Environment variables (create this)
-├── .gitignore
-├── requirements.txt
-├── run.py                  # Application entry point
-└── README.md
-```
-
 ## 🔧 Configuration
 
 ### Database Options
