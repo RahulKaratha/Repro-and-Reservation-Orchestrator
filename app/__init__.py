@@ -2,8 +2,9 @@ from flask import Flask
 from app.config import Config
 from app.extensions import db, login_manager, migrate, mail
 from app.routes.auth import auth
-from app.routes.manager import manager
+from app.routes.managerDashboard import manager
 from app.routes.engineer import engineer
+from app.routes.bugDashboard import bug
 
 def create_app():
     flask_app = Flask(__name__)
@@ -21,5 +22,6 @@ def create_app():
     flask_app.register_blueprint(auth)
     flask_app.register_blueprint(manager)
     flask_app.register_blueprint(engineer)
+    flask_app.register_blueprint(bug)
 
     return flask_app

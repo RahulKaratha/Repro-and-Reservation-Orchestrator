@@ -1,32 +1,42 @@
 from app.extensions import db
-from sqlalchemy import Enum
-import enum
-from datetime import datetime, timezone
-
-class StatusEnum(enum.Enum):
-    Completed = "Completed"
-    Active = "Active"
 
 class Workgroup(db.Model):
 
-    __tablename__ = "workgroup_schema"
+    __tablename__ = "Workgroup_Schema"
 
     id = db.Column("ID", db.Integer, primary_key=True)
-    name = db.Column("Name", db.String(100), nullable=False)
-    release_version = db.Column("Release_Version", db.String(20), nullable=False)
-    is_completed = db.Column("Status", db.String(10), nullable=False, default="Active")
-    manager_id = db.Column("Manager_ID", db.Integer, db.ForeignKey("users.ID"))
-    created_at = db.Column("Created_At", db.DateTime,default=lambda: datetime.now(timezone.utc))
+    name = db.Column("Name", db.String(100))
+    release_version = db.Column("Release_Version", db.String(10), nullable=False)
+
+    status = db.Column(
+        "Status",
+        db.Enum('Completed', 'Active'),
+        nullable=False
+    )
+
+    manager_id = db.Column(
+        "Manager_ID",
+        db.Integer,
+        db.ForeignKey("Users.ID")
+    )
+
+    created_at = db.Column(
+        "Created_At",
+        db.DateTime,
+        server_default=db.func.current_timestamp()
+    )
 
     manager = db.relationship(
         "User",
         back_populates="managed_workgroups"
     )
 
-    assignments = db.relationship(
+    engineers = db.relationship(
         "WorkgroupAssignment",
-        back_populates="workgroup"
+        back_populates="workgroup",
+        cascade="all, delete"
     )
 
-    def __repr__(self):
-        return f"<Workgroup {self.name}>"
+    @property
+    def is_completed(self):
+        return self.status == "Completed"
