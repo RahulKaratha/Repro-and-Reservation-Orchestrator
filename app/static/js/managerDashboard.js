@@ -406,7 +406,6 @@ async function handleMarkDone(id) {
         method: 'PATCH',
         body: JSON.stringify({ is_completed: newStatus }),
     });
-
     // Update local state
     wg.is_completed = newStatus;
 
@@ -654,11 +653,9 @@ function initEventListeners() {
 
     // Logout
     dom.btnLogout.addEventListener('click', async () => {
-        await apiFetch('/api/auth/logout', { method: 'POST' });
+        await apiFetch('/api/auth/logout', { method: 'POST', credentials: "include"});
         // In local mock, simply reset currentUser
-        currentUser = null;
-        alert('Logged out locally (mock).');
-        location.reload();
+         window.location.href = "/";
     });
 
     // Close modal

@@ -1,26 +1,21 @@
-from flask import Blueprint, jsonify, request, session, redirect, render_template, url_for
-from app.extensions import db
+from flask import Blueprint, session, jsonify, render_template
 from app.models.user import User
 from app.models.workgroup import Workgroup
 from app.models.workgroupAssignment import WorkgroupAssignment
+from flask import request
+from datetime import datetime
+from app import db
 
 manager = Blueprint("manager", __name__)
 
-@manager.route("/manager_dashboard")
+@manager.route("/manager",methods=["GET"])
 def manager_dashboard():
-
     if "user_id" not in session:
-        return redirect(url_for("auth.login"))
-
+        return jsonify({"error": "Not logged in"}), 401
     return render_template("managerDashboard.html")
 
-# ---------------------------------------------------
-# GET CURRENT LOGGED-IN USER
-# GET /api/auth/me
-# ---------------------------------------------------
 @manager.route("/api/auth/me", methods=["GET"])
 def get_current_user():
-
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
 
@@ -29,22 +24,32 @@ def get_current_user():
     return jsonify({
         "id": user.id,
         "name": user.first_name,
-        "fullName": user.full_name,
+        "fullName": f"{user.first_name} {user.last_name}",
         "email": user.email,
         "role": user.role
     })
 
 
-# ---------------------------------------------------
-# GET DASHBOARD STATS
-# GET /api/stats
-# ---------------------------------------------------
 @manager.route("/api/stats", methods=["GET"])
 def get_stats():
 
-    total = Workgroup.query.count()
-    active = Workgroup.query.filter_by(is_completed=False).count()
-    completed = Workgroup.query.filter_by(is_completed=True).count()
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    manager_id = session["user_id"]
+
+    total = Workgroup.query.filter_by(manager_id=manager_id).count()
+
+    active = Workgroup.query.filter_by(
+    manager_id=manager_id,
+    status="Active"
+    ).count()
+
+    completed = Workgroup.query.filter_by(
+        manager_id=manager_id,
+        status="Completed"
+    ).count()
+
     engineers = User.query.filter_by(role="Engineer").count()
 
     return jsonify({
@@ -55,31 +60,35 @@ def get_stats():
     })
 
 
-# ---------------------------------------------------
-# GET ALL WORKGROUPS
-# GET /api/workgroups
-# ---------------------------------------------------
 @manager.route("/api/workgroups", methods=["GET"])
 def get_workgroups():
 
-    workgroups = Workgroup.query.all()
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
 
-    data = []
+    manager_id = session["user_id"]
+
+    workgroups = Workgroup.query.filter_by(manager_id=manager_id).all()
+
+    result = []
 
     for wg in workgroups:
 
-        assignments = WorkgroupAssignment.query.filter_by(workgroup_id=wg.id).all()
+        assignments = WorkgroupAssignment.query.filter_by(
+            workgroup_id=wg.id
+        ).all()
+
         engineers = []
 
         for a in assignments:
-            user = User.query.get(a.employee_id)
-            if user:
-                engineers.append({
-                    "id": user.id,
-                    "name": user.full_name
-                })
+            eng = User.query.get(a.employee_id)
 
-        data.append({
+            engineers.append({
+                "id": eng.id,
+                "name": f"{eng.first_name} {eng.last_name}"
+            })
+
+        result.append({
             "id": wg.id,
             "name": wg.name,
             "release_version": wg.release_version,
@@ -88,64 +97,35 @@ def get_workgroups():
             "engineers": engineers
         })
 
-    return jsonify(data)
+    return jsonify(result)
 
-
-# ---------------------------------------------------
-# CREATE WORKGROUP
-# POST /api/workgroups
-# ---------------------------------------------------
 @manager.route("/api/workgroups", methods=["POST"])
 def create_workgroup():
 
-    data = request.get_json()
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
 
-    name = data.get("name")
-    release_version = data.get("release_version")
-    engineer_ids = data.get("engineer_ids", [])
+    data = request.json
 
-    workgroup = Workgroup(
-        name=name,
-        release_version=release_version,
-        is_completed=False
+    wg = Workgroup(
+        name=data["name"],
+        release_version=data["release_version"],
+        manager_id=session["user_id"],
+        status="Completed" if data.get("is_completed", False) else "Active",
+        created_at=datetime.utcnow()
     )
 
-    db.session.add(workgroup)
+    db.session.add(wg)
     db.session.commit()
 
-    # assign engineers
+    engineer_ids = data.get("engineer_ids", [])
+
     for eid in engineer_ids:
-        assign = WorkgroupAssignment(
-            workgroup_id=workgroup.id,
-            engineer_id=eid
+        assignment = WorkgroupAssignment(
+            workgroup_id=wg.id,
+            employee_id=eid
         )
-        db.session.add(assign)
-
-    db.session.commit()
-
-    return jsonify({
-        "id": workgroup.id,
-        "name": workgroup.name,
-        "release_version": workgroup.release_version,
-        "is_completed": workgroup.is_completed,
-        "created_at": workgroup.created_at,
-        "engineers": []
-    })
-
-
-# ---------------------------------------------------
-# UPDATE WORKGROUP
-# PATCH /api/workgroups/<id>
-# ---------------------------------------------------
-@manager.route("/api/workgroups/<int:id>", methods=["PATCH"])
-def update_workgroup(id):
-
-    wg = Workgroup.query.get_or_404(id)
-    data = request.get_json()
-
-    wg.name = data.get("name", wg.name)
-    wg.release_version = data.get("release_version", wg.release_version)
-    wg.is_completed = data.get("is_completed", wg.is_completed)
+        db.session.add(assignment)
 
     db.session.commit()
 
@@ -154,16 +134,92 @@ def update_workgroup(id):
         "name": wg.name,
         "release_version": wg.release_version,
         "is_completed": wg.is_completed,
-        "created_at": wg.created_at
+        "created_at": wg.created_at,
+        "engineers": []
     })
 
 
-# ---------------------------------------------------
-# DELETE WORKGROUP
-# DELETE /api/workgroups/<id>
-# ---------------------------------------------------
+@manager.route("/api/workgroups/<int:id>", methods=["PATCH"])
+def update_workgroup(id):
+
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    data = request.get_json()
+
+    wg = Workgroup.query.get_or_404(id)
+
+    # Update basic fields
+    if "name" in data:
+        wg.name = data["name"]
+
+    if "release_version" in data:
+        wg.release_version = data["release_version"]
+
+    if "is_completed" in data:
+        wg.status = "Completed" if data["is_completed"] else "Active"
+
+    # 🔹 Update engineers if provided
+    if "engineer_ids" in data:
+
+        new_employee_ids = set(data["engineer_ids"])
+
+        # Get existing assignments
+        existing_assignments = WorkgroupAssignment.query.filter_by(
+            workgroup_id=id
+        ).all()
+
+        existing_employee_ids = {a.employee_id for a in existing_assignments}
+
+        # Engineers to remove
+        remove_ids = existing_employee_ids - new_employee_ids
+
+        # Engineers to add
+        add_ids = new_employee_ids - existing_employee_ids
+
+        # Remove old assignments
+        if remove_ids:
+            WorkgroupAssignment.query.filter(
+                WorkgroupAssignment.workgroup_id == id,
+                WorkgroupAssignment.employee_id.in_(remove_ids)
+            ).delete(synchronize_session=False)
+
+        # Add new assignments
+        for employee_id in add_ids:
+            assignment = WorkgroupAssignment(
+                workgroup_id=id,
+                employee_id=employee_id
+            )
+            db.session.add(assignment)
+
+    db.session.commit()
+
+    # 🔹 Return updated workgroup with engineers
+    assignments = WorkgroupAssignment.query.filter_by(workgroup_id=id).all()
+
+    engineers = []
+    for a in assignments:
+        eng = User.query.get(a.employee_id)
+        engineers.append({
+            "id": eng.id,
+            "name": f"{eng.first_name} {eng.last_name}"
+        })
+
+    return jsonify({
+        "id": wg.id,
+        "name": wg.name,
+        "release_version": wg.release_version,
+        "is_completed": wg.is_completed,
+        "created_at": wg.created_at,
+        "engineers": engineers
+    })
+
+
 @manager.route("/api/workgroups/<int:id>", methods=["DELETE"])
 def delete_workgroup(id):
+
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
 
     wg = Workgroup.query.get_or_404(id)
 
@@ -175,31 +231,26 @@ def delete_workgroup(id):
     return jsonify({"message": "Workgroup deleted"})
 
 
-# ---------------------------------------------------
-# GET ENGINEERS
-# GET /api/engineers
-# ---------------------------------------------------
-@manager.route("/api/engineers")
+@manager.route("/api/engineers", methods=["GET"])
 def get_engineers():
 
     engineers = User.query.filter_by(role="Engineer").all()
 
-    data = []
+    result = []
 
     for e in engineers:
-        data.append({
+        result.append({
             "id": e.id,
-            "name": e.full_name
+            "name": f"{e.first_name} {e.last_name}",
+            "email": e.email
         })
 
-    return jsonify(data)
+    return jsonify(result)
 
-#---------------------------------------------------
-# LOGOUT
-#---------------------------------------------------
-@manager.route("/api/auth/logout",methods=["POST"])
+
+@manager.route("/api/auth/logout", methods=["POST"])
 def logout():
+
     session.clear()
-    return jsonify({
-        "message": "Logged out successfully"
-    }), 200
+
+    return jsonify({"message": "Logged out"})
