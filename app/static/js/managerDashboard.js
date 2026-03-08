@@ -485,13 +485,6 @@ function resetForm() {
 
     // Reset filled classes
     $$('.form-label.filled').forEach(l => l.classList.remove('filled'));
-    // Reset search bar
-    const searchInput = document.getElementById('engineerSearchInput');
-    if (searchInput) {
-        searchInput.value = '';
-        // Un-hide any filtered engineers
-        document.querySelectorAll('.engineer-item').forEach(item => item.style.display = '');
-    }
 }
 
 /* =========================================
@@ -628,19 +621,13 @@ function escapeHtml(str) {
 }
 
 function renderEngineers() {
-    const searchWrapper = document.getElementById('engineerSearchWrapper');
-    
     if (engineers.length === 0) {
         dom.engineersEmpty.style.display = '';
         dom.engineersList.style.display = 'none';
-        if (searchWrapper) searchWrapper.style.display = 'none';
         return;
     }
-    
     dom.engineersEmpty.style.display = 'none';
     dom.engineersList.style.display = '';
-    if (searchWrapper) searchWrapper.style.display = 'block';
-
     dom.engineersList.innerHTML = engineers.map(eng => `
     <div class="engineer-item">
       <input type="checkbox" id="eng-${eng.id}" value="${eng.id}" />
@@ -702,25 +689,6 @@ function initEventListeners() {
         const banner = document.getElementById('formErrorBanner');
         if (banner) banner.classList.add('hidden');
     });
-
-    // Dynamic Engineer Search Filter
-    const searchInput = document.getElementById('engineerSearchInput');
-    if (searchInput) {
-        searchInput.addEventListener('input', (e) => {
-            const searchTerm = e.target.value.toLowerCase();
-            const items = dom.engineersList.querySelectorAll('.engineer-item');
-            
-            items.forEach(item => {
-                const labelText = item.querySelector('label').textContent.toLowerCase();
-                // Toggle display based on whether the label text includes the search term
-                if (labelText.includes(searchTerm)) {
-                    item.style.display = '';
-                } else {
-                    item.style.display = 'none';
-                }
-            });
-        });
-    }
 
     // Filter tabs
     dom.filterTabs.addEventListener('click', (e) => {

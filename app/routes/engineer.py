@@ -6,7 +6,7 @@ from app.models.workgroupAssignment import WorkgroupAssignment
 engineer = Blueprint("engineer", __name__)
 
 
-@engineer.route("/engineer_dashboard", methods=["GET","POST"])
+@engineer.route("/engineer_dashboard", methods=["GET", "POST"])
 def engineer_dashboard():
 
     if "user_id" not in session:
@@ -77,7 +77,7 @@ def engineer_dashboard():
     )
 
 
-@engineer.route("/engineer_logout")
+@engineer.route("/api/auth/logout", methods=["POST", "GET"])
 def logout():
     session.clear()
     return redirect(url_for("auth.login"))
