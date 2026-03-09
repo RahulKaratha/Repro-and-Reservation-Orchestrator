@@ -53,8 +53,7 @@ def engineer_dashboard():
                 if user:
                     engineers.append(user)
 
-            # Attach engineers to workgroup
-            wg.engineers = engineers
+            wg.engineer_list = engineers
 
             # Apply filter
             if filter_type == "active" and wg.is_completed != "Completed":

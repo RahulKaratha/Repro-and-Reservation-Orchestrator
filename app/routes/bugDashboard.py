@@ -1,6 +1,10 @@
-from flask import Blueprint, render_template, session, jsonify, request
+from flask import Blueprint, render_template, session, jsonify, request, redirect, url_for
 from app.extensions import db
 from app.models.bug import Bug
+from app.models.user import User
+from app.models.workgroup import Workgroup
+from app.models.workgroupAssignment import WorkgroupAssignment
+from sqlalchemy import select
 
 bug = Blueprint("bugDashboard", __name__)
 
@@ -12,7 +16,7 @@ bug = Blueprint("bugDashboard", __name__)
 def bug_management():
 
     if "user_id" not in session:
-        return jsonify({"error": "Not logged in"}), 401
+        return redirect(url_for("auth.login"))
 
     return render_template("bugManagement.html")
 
@@ -26,14 +30,14 @@ def get_current_user():
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
 
-    user = session.get("user")
+    user = User.query.get(session["user_id"])
 
     return jsonify({
-        "id": user["id"],
-        "name": user["name"],
-        "fullName": user["name"],
-        "email": user["email"],
-        "role": user["role"]
+        "id": user.id,
+        "name": user.first_name,
+        "fullName": user.full_name,
+        "email": user.email,
+        "role": user.role
     })
 
 # --------------------------------------------------
@@ -42,7 +46,38 @@ def get_current_user():
 @bug.route("/api/bugs", methods=["GET"])
 def get_bugs():
 
-    bugs = Bug.query.all()
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    user_id = session["user_id"]
+    role = session.get("role")
+
+    query = Bug.query
+
+    if role == "Manager":
+        # Only include bugs whose engineer belongs to a workgroup managed by this manager
+        engineer_ids_subq = (
+               db.session.query(db.func.distinct(WorkgroupAssignment.employee_id))
+                .join(Workgroup, WorkgroupAssignment.workgroup_id == Workgroup.id)
+                .filter(Workgroup.manager_id == user_id)
+                .subquery()
+        )
+        
+
+        engineer_ids = select(WorkgroupAssignment.employee_id).join(
+            Workgroup,
+            Workgroup.id == WorkgroupAssignment.workgroup_id
+        ).where(
+            Workgroup.manager_id == session["user_id"]
+        )
+
+        query = query.filter(Bug.engineer_id.in_(engineer_ids))
+        
+    elif role == "Engineer":
+        # Engineers only see their own bugs
+        query = query.filter(Bug.engineer_id == user_id)
+
+    bugs = query.all()
 
     repro = []
     test = []
@@ -114,10 +149,30 @@ def schedule_bug(bug_code):
 @bug.route("/api/bugs/stats", methods=["GET"])
 def bug_stats():
 
-    total = Bug.query.count()
-    repro = Bug.query.filter_by(bug_type="repro").count()
-    test = Bug.query.filter_by(bug_type="test").count()
-    pending = Bug.query.filter_by(status="pending").count()
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    user_id = session["user_id"]
+    role = session.get("role")
+
+    query = Bug.query
+
+    if role == "Manager":
+       engineer_ids_subq = (
+            db.session.query(db.func.distinct(WorkgroupAssignment.employee_id))
+            .join(Workgroup, WorkgroupAssignment.workgroup_id == Workgroup.id)
+            .filter(Workgroup.manager_id == user_id)
+            .subquery()
+        )
+       query = query.filter(Bug.engineer_id.in_(engineer_ids_subq))
+
+    elif role == "Engineer":
+        query = query.filter(Bug.engineer_id == user_id)
+
+    total = query.count()
+    repro = query.filter_by(bug_type="repro").count()
+    test = query.filter_by(bug_type="test").count()
+    pending = query.filter_by(status="pending").count()
     return jsonify({
         "totalBugs": total,
         "reproBugs": repro,

@@ -108,6 +108,7 @@ async function loadCurrentUser() {
     renderUserInfo();
 }
 
+
 async function loadBugsData(){
     const data = await apiFetch('/api/bugs');
     const stats = await apiFetch('/api/bugs/stats');
@@ -249,7 +250,7 @@ function initEventListeners() {
         // In local mock, simply reset currentUser
         currentUser = null;
         alert('Logged out locally (mock).');
-        window.location.href = "/";
+        location.reload();
     });
 
     // Section Collapse Toggles

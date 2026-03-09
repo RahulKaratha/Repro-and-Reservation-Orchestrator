@@ -11,7 +11,9 @@ class Workgroup(db.Model):
     status = db.Column(
         "Status",
         db.Enum('Completed', 'Active'),
-        nullable=False
+        nullable=False,
+        default="Active",
+        server_default="Active"
     )
 
     manager_id = db.Column(
