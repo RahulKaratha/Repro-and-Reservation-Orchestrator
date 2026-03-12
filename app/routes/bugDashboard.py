@@ -1,10 +1,12 @@
 from flask import Blueprint, render_template, session, jsonify, request, redirect, url_for
 from app.extensions import db
 from app.models.bug import Bug
+from app.models.bug_tests import BugTest
+from app.models.bug_stations import BugStation
 from app.models.user import User
 from app.models.workgroup import Workgroup
 from app.models.workgroupAssignment import WorkgroupAssignment
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 bug = Blueprint("bugDashboard", __name__)
 
@@ -243,6 +245,100 @@ def bug_stats():
         "testBugs": test,
         "pendingActions": pending
     })
+
+
+
+# --------------------------------------------------
+# SEARCH BUGS (autocomplete suggestions)
+# --------------------------------------------------
+@bug.route("/api/bugs/search", methods=["GET"])
+def search_bugs():
+
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify([])
+
+    user_id = session["user_id"]
+    role = session.get("role")
+    workgroup_id = request.args.get("workgroup_id", type=int)
+    pattern = f"%{q}%"
+    MAX_SUGGESTIONS = 7
+
+    # ── Build base query with same role-based filtering as get_bugs ──
+    base_query = Bug.query
+
+    if workgroup_id:
+        engineer_ids = db.session.query(WorkgroupAssignment.employee_id).filter(
+            WorkgroupAssignment.workgroup_id == workgroup_id
+        ).all()
+        engineer_ids = [e[0] for e in engineer_ids]
+        if not engineer_ids:
+            return jsonify([])
+        base_query = base_query.filter(Bug.engineer_id.in_(engineer_ids))
+    elif role == "Manager":
+        engineer_ids = select(WorkgroupAssignment.employee_id).join(
+            Workgroup, Workgroup.id == WorkgroupAssignment.workgroup_id
+        ).where(Workgroup.manager_id == user_id)
+        base_query = base_query.filter(Bug.engineer_id.in_(engineer_ids))
+    elif role == "Engineer":
+        base_query = base_query.filter(Bug.engineer_id == user_id)
+
+    # ── Collect suggestions from four categories ──
+    suggestions = []
+    seen = set()
+
+    def add_suggestion(type_label, value, bug_code):
+        key = (type_label, value)
+        if key not in seen and len(suggestions) < MAX_SUGGESTIONS:
+            seen.add(key)
+            suggestions.append({
+                "type": type_label,
+                "value": value,
+                "bug_code": bug_code
+            })
+
+    # 1) Bug ID matches
+    bug_id_matches = base_query.filter(Bug.bug_code.ilike(pattern)).limit(MAX_SUGGESTIONS).all()
+    for b in bug_id_matches:
+        add_suggestion("Bug ID", b.bug_code, b.bug_code)
+
+    # 2) Engineer name matches
+    if len(suggestions) < MAX_SUGGESTIONS:
+        engineer_bugs = base_query.join(User, Bug.engineer_id == User.id).filter(
+            or_(
+                User.first_name.ilike(pattern),
+                User.last_name.ilike(pattern),
+                db.func.concat(User.first_name, ' ', User.last_name).ilike(pattern)
+            )
+        ).limit(MAX_SUGGESTIONS).all()
+        for b in engineer_bugs:  # type: Bug
+            if b.engineer:
+                add_suggestion("Engineer", b.engineer.full_name, b.bug_code)
+
+    # 3) Test name matches
+    if len(suggestions) < MAX_SUGGESTIONS:
+        test_bugs = base_query.join(BugTest, Bug.id == BugTest.bug_id).filter(
+            BugTest.test_name.ilike(pattern)
+        ).limit(MAX_SUGGESTIONS).all()
+        for b in test_bugs:  # type: Bug
+            for t in b.tests:
+                if q.lower() in t.test_name.lower():
+                    add_suggestion("Test", t.test_name, b.bug_code)
+
+    # 4) Station name matches
+    if len(suggestions) < MAX_SUGGESTIONS:
+        station_bugs = base_query.join(BugStation, Bug.id == BugStation.bug_id).filter(
+            BugStation.station_name.ilike(pattern)
+        ).limit(MAX_SUGGESTIONS).all()
+        for b in station_bugs:  # type: Bug
+            for s in b.stations:
+                if q.lower() in s.station_name.lower():
+                    add_suggestion("Station", s.station_name, b.bug_code)
+
+    return jsonify(suggestions)
 
 
 # --------------------------------------------------
