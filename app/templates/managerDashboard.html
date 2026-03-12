@@ -341,27 +341,6 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/managerDashboard.js') }}"></script>
-    <!-- Load the SocketIO client library -->
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-
-<script>
-  const socket = io();   // connects to the server automatically
-
-  // When another user creates a workgroup, reload the list
-  socket.on("workgroup_created", () => {
-    loadWorkgroups();  
-  });
-
-  // When another user updates a workgroup, reload the list
-  socket.on("workgroup_updated", () => {
-    loadWorkgroups();
-  });
-
-  // When another user deletes a workgroup, reload the list
-  socket.on("workgroup_deleted", () => {
-    loadWorkgroups();
-  });
-</script>
 </body>
 
 </html>
