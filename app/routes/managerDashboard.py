@@ -1,10 +1,10 @@
 from flask import Blueprint, session, jsonify, render_template, request, redirect, url_for
+from app.extensions import db
 from app.models.user import User
 from app.models.workgroup import Workgroup
 from app.models.workgroupAssignment import WorkgroupAssignment
 from app.auth_utils import manager_required, login_required
 from datetime import datetime
-from app import db
 
 manager = Blueprint("manager", __name__)
 
@@ -38,10 +38,12 @@ def get_stats():
 
 
 @manager.route("/api/workgroups", methods=["GET"])
-@manager_required          #  Engineer cannot list manager's workgroups
+@manager_required
 def get_workgroups():
     manager_id = session["user_id"]
+    print(f"Fetching workgroups for manager_id: {manager_id}")  # Debug log
     workgroups = Workgroup.query.filter_by(manager_id=manager_id).all()
+    print(f"Found {len(workgroups)} workgroups")  # Debug log
 
     result = []
     for wg in workgroups:
@@ -49,14 +51,15 @@ def get_workgroups():
         engineers = []
         for a in assignments:
             eng = User.query.get(a.employee_id)
-            engineers.append({"id": eng.id, "name": f"{eng.first_name} {eng.last_name}"})
+            if eng:
+                engineers.append({"id": eng.id, "name": f"{eng.first_name} {eng.last_name}"})
 
         result.append({
             "id": wg.id,
             "name": wg.name,
             "release_version": wg.release_version,
             "is_completed": wg.is_completed,
-            "created_at": wg.created_at,
+            "created_at": wg.created_at.isoformat() if wg.created_at else None,
             "engineers": engineers
         })
 
@@ -64,34 +67,58 @@ def get_workgroups():
 
 
 @manager.route("/api/workgroups", methods=["POST"])
-@manager_required          #  THE KEY FIX: Engineer cannot create workgroups
+@manager_required
 def create_workgroup():
     data = request.json
+    print(f"Creating workgroup: {data}")  # Debug log
 
-    wg = Workgroup(
-        name=data["name"],
-        release_version=data["release_version"],
-        manager_id=session["user_id"],
-        status="Completed" if data.get("is_completed", False) else "Active",
-        created_at=datetime.utcnow()
-    )
+    try:
+        wg = Workgroup(
+            name=data["name"],
+            release_version=data["release_version"],
+            manager_id=session["user_id"],
+            status="Completed" if data.get("is_completed", False) else "Active"
+        )
 
-    db.session.add(wg)
-    db.session.commit()
+        db.session.add(wg)
+        db.session.flush()  # Get the ID before committing
+        print(f"Workgroup created with ID: {wg.id}")  # Debug log
 
-    for eid in data.get("engineer_ids", []):
-        db.session.add(WorkgroupAssignment(workgroup_id=wg.id, employee_id=eid))
+        engineer_ids = data.get("engineer_ids", [])
+        print(f"Engineer IDs to assign: {engineer_ids}")  # Debug log
+        
+        for eid in engineer_ids:
+            assignment = WorkgroupAssignment(workgroup_id=wg.id, employee_id=eid)
+            db.session.add(assignment)
+            print(f"Added assignment: workgroup={wg.id}, engineer={eid}")  # Debug log
 
-    db.session.commit()
+        db.session.commit()
+        print("Committed to database")  # Debug log
+        
+        # Verify assignments were saved
+        saved_assignments = WorkgroupAssignment.query.filter_by(workgroup_id=wg.id).all()
+        print(f"Verified {len(saved_assignments)} assignments saved")  # Debug log
 
-    return jsonify({
-        "id": wg.id,
-        "name": wg.name,
-        "release_version": wg.release_version,
-        "is_completed": wg.is_completed,
-        "created_at": wg.created_at,
-        "engineers": []
-    })
+        # Fetch engineers for response
+        assignments = WorkgroupAssignment.query.filter_by(workgroup_id=wg.id).all()
+        engineers = []
+        for a in assignments:
+            eng = User.query.get(a.employee_id)
+            if eng:
+                engineers.append({"id": eng.id, "name": f"{eng.first_name} {eng.last_name}"})
+
+        return jsonify({
+            "id": wg.id,
+            "name": wg.name,
+            "release_version": wg.release_version,
+            "is_completed": wg.is_completed,
+            "created_at": wg.created_at.isoformat() if wg.created_at else None,
+            "engineers": engineers
+        })
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error creating workgroup: {str(e)}")  # Debug log
+        return jsonify({"error": str(e)}), 500
 
 
 @manager.route("/api/workgroups/<int:id>", methods=["PATCH"])

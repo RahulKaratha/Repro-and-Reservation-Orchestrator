@@ -577,6 +577,10 @@ body {
     color: #16a34a;
 }
 
+.wg-dropdown-item--amber {
+    color: #f59e0b;
+}
+
 .wg-dropdown-item--red {
     color: #dc2626;
 }
@@ -636,6 +640,31 @@ body {
 .wg-card-date {
     font-size: 12px;
     color: #94a3b8;
+}
+
+.wg-view-bugs-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(124, 58, 237, 0.08);
+    border: none;
+    font-size: 12px;
+    font-weight: 600;
+    color: #7c3aed;
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.wg-view-bugs-btn:hover {
+    background: rgba(124, 58, 237, 0.15);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.15);
+}
+
+.wg-view-bugs-btn:active {
+    transform: translateY(0);
 }
 
 .wg-mark-done-btn {

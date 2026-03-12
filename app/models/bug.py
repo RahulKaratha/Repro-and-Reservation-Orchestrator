@@ -5,7 +5,12 @@ class Bug(db.Model):
 
     __tablename__ = "Bugs"
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    priority = db.Column(
+        db.Enum('P0', 'P1', 'P2', 'P3', 'P4'),
+        default='P2'
+    )
 
     bug_code = db.Column(
         db.String(50),
@@ -20,8 +25,10 @@ class Bug(db.Model):
 
     engineer_id = db.Column(
         db.Integer,
-        db.ForeignKey("Users.ID")
+        db.ForeignKey("Users.ID", ondelete="SET NULL")
     )
+
+    summary = db.Column(db.String(255))
 
     station_config = db.Column(db.String(100))
     resource_group = db.Column(db.String(100))
@@ -36,6 +43,15 @@ class Bug(db.Model):
         server_default=db.func.current_timestamp()
     )
 
+    # Indexes
+    __table_args__ = (
+        db.Index('idx_bug_code', 'bug_code'),
+        db.Index('idx_engineer', 'engineer_id'),
+        db.Index('idx_priority', 'priority'),
+        db.Index('idx_status', 'status'),
+        db.Index('idx_bug_type', 'bug_type'),
+    )
+
     engineer = db.relationship(
         "User",
         back_populates="bugs"
@@ -44,11 +60,11 @@ class Bug(db.Model):
     tests = db.relationship(
         "BugTest",
         back_populates="bug",
-        cascade="all, delete"
+        cascade="all, delete-orphan"
     )
 
     stations = db.relationship(
         "BugStation",
         back_populates="bug",
-        cascade="all, delete"
+        cascade="all, delete-orphan"
     )
