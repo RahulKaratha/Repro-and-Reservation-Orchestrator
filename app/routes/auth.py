@@ -16,9 +16,15 @@ def login():
         user = User.query.filter_by(email=email).first()
 
         if user and check_password_hash(user.password, password):
+            #  FIX 1: Always clear the session before setting new user data.
+            # This prevents stale role/user_id from a previous login persisting
+            # when two users log in sequentially in the same browser tab.
+            session.clear()
+
             session['user_id'] = user.id
             session['role'] = user.role
-
+            #  FIX 2: Make the session permanent and bind it tightly
+            session.permanent = True
 
             if user.role == "Engineer":
                 return redirect(url_for('engineer.engineer_dashboard'))
@@ -47,10 +53,15 @@ def register():
             flash("Passwords do not match!", "danger")
             return redirect(url_for('auth.register'))
 
+        if len(password_raw) < 6:
+            flash("Password must be at least 6 characters", "danger")
+            return redirect(url_for('auth.register'))
+
         existing_user = User.query.filter_by(email=email).first()
 
         if existing_user:
-            flash("Email already exists!", "warning")
+            flash("Email already registered", "danger")
+            return redirect(url_for('auth.register'))
         else:
             hashed_password = generate_password_hash(password_raw)
 
@@ -65,10 +76,11 @@ def register():
             db.session.add(new_user)
             db.session.commit()
 
-            flash("Account created successfully!", "success")
+            flash("Account created successfully! Please sign in.", "success")
             return redirect(url_for('auth.login'))
 
     return render_template("register.html")
+
 
 # ---------------- FORGOT PASSWORD ----------------
 @auth.route('/forgot_password', methods=['GET', 'POST'])
@@ -77,7 +89,6 @@ def forgot_password():
         email = request.form['email']
         user = User.query.filter_by(email=email).first()
 
-        # Always show the same message to prevent email enumeration
         if user:
             try:
                 send_reset_email(user)
@@ -85,7 +96,7 @@ def forgot_password():
                 print(f"EMAIL ERROR: {e}")
                 flash("Unable to send email. Please try again later.", "danger")
                 return render_template("forgot_password.html")
-            
+
         flash("If this email exists, a reset link has been sent.", "info")
         return redirect(url_for('auth.forgot_password'))
 
@@ -121,3 +132,34 @@ def reset_password(token):
 
     return render_template("reset_password.html", token=token)
 
+
+# ---------------- SHARED: Current User (used by both dashboards) ----------------
+@auth.route("/api/auth/me", methods=["GET"])
+def get_current_user():
+    """
+     FIX 3: Moved /api/auth/me to the AUTH blueprint (neutral ground).
+    Previously it lived on the manager blueprint, so engineer dashboards
+    calling this endpoint were reading the manager's session context.
+    """
+    if "user_id" not in session:
+        return {"error": "Not logged in"}, 401
+
+    user = User.query.get(session["user_id"])
+    if not user:
+        session.clear()
+        return {"error": "User not found"}, 401
+
+    return {
+        "id": user.id,
+        "name": user.first_name,
+        "fullName": f"{user.first_name} {user.last_name}",
+        "email": user.email,
+        "role": user.role
+    }
+
+
+# ---------------- SHARED: Logout ----------------
+@auth.route("/api/auth/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return {"message": "Logged out"}

@@ -4,7 +4,7 @@ class Workgroup(db.Model):
 
     __tablename__ = "Workgroup_Schema"
 
-    id = db.Column("ID", db.Integer, primary_key=True)
+    id = db.Column("ID", db.Integer, primary_key=True, autoincrement=True)
     name = db.Column("Name", db.String(100))
     release_version = db.Column("Release_Version", db.String(10), nullable=False)
 
@@ -19,13 +19,19 @@ class Workgroup(db.Model):
     manager_id = db.Column(
         "Manager_ID",
         db.Integer,
-        db.ForeignKey("Users.ID")
+        db.ForeignKey("Users.ID", ondelete="SET NULL")
     )
 
     created_at = db.Column(
         "Created_At",
         db.DateTime,
         server_default=db.func.current_timestamp()
+    )
+
+    # Indexes
+    __table_args__ = (
+        db.Index('idx_manager', 'Manager_ID'),
+        db.Index('idx_status', 'Status'),
     )
 
     manager = db.relationship(
@@ -36,7 +42,7 @@ class Workgroup(db.Model):
     engineers = db.relationship(
         "WorkgroupAssignment",
         back_populates="workgroup",
-        cascade="all, delete"
+        cascade="all, delete-orphan"
     )
 
     @property

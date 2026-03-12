@@ -275,6 +275,109 @@ body {
     color: #94a3b8;
 }
 
+/* ── Search Dropdown ── */
+.search-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+    z-index: 150;
+    overflow: hidden;
+    animation: searchDropdownSlide 0.18s ease;
+}
+
+.search-dropdown.hidden {
+    display: none;
+}
+
+@keyframes searchDropdownSlide {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.search-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 16px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.search-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.search-dropdown-item:hover {
+    background-color: #f8f7ff;
+}
+
+.search-dropdown-tag {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.search-dropdown-tag--bugid {
+    background: #ede9fe;
+    color: #7c3aed;
+}
+
+.search-dropdown-tag--engineer {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.search-dropdown-tag--test {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.search-dropdown-tag--station {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.search-dropdown-value {
+    font-size: 13px;
+    font-weight: 500;
+    color: #334155;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.search-dropdown-value mark {
+    background: #fef08a;
+    color: #1e293b;
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
+.search-dropdown-empty {
+    padding: 20px 16px;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 13px;
+}
+
 /* ── Stats Row ── */
 .stats-row {
     display: grid;
@@ -550,6 +653,48 @@ body {
 .badge--gray {
     background: #f1f5f9;
     color: #64748b;
+}
+
+.priority-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    text-transform: uppercase;
+}
+
+.priority-p0 {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.priority-p1 {
+    background: #fed7aa;
+    color: #ea580c;
+}
+
+.priority-p2 {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.priority-p3 {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.priority-p4 {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.summary-cell {
+    font-size: 12.5px;
+    color: #475569;
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .config-cell {

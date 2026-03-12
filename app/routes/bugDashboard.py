@@ -1,10 +1,12 @@
 from flask import Blueprint, render_template, session, jsonify, request, redirect, url_for
 from app.extensions import db
 from app.models.bug import Bug
+from app.models.bug_tests import BugTest
+from app.models.bug_stations import BugStation
 from app.models.user import User
 from app.models.workgroup import Workgroup
 from app.models.workgroupAssignment import WorkgroupAssignment
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 bug = Blueprint("bugDashboard", __name__)
 
@@ -18,7 +20,19 @@ def bug_management():
     if "user_id" not in session:
         return redirect(url_for("auth.login"))
 
-    return render_template("bugManagement.html")
+    workgroup_id = request.args.get('workgroup_id', type=int)
+    workgroup = None
+    
+    if workgroup_id:
+        workgroup = Workgroup.query.get(workgroup_id)
+        if not workgroup:
+            return redirect(url_for("manager.manager_dashboard"))
+        
+        # Authorization: Only the manager who owns this workgroup can view it
+        if session.get('role') == 'Manager' and workgroup.manager_id != session['user_id']:
+            return redirect(url_for("manager.manager_dashboard"))
+
+    return render_template("bugManagement.html", workgroup=workgroup)
 
 
 # --------------------------------------------------
@@ -51,10 +65,33 @@ def get_bugs():
 
     user_id = session["user_id"]
     role = session.get("role")
+    workgroup_id = request.args.get('workgroup_id', type=int)
+
+    # Authorization check for workgroup access
+    if workgroup_id:
+        workgroup = Workgroup.query.get(workgroup_id)
+        if not workgroup:
+            return jsonify({"error": "Workgroup not found"}), 404
+        
+        # Only the manager who owns this workgroup can view its bugs
+        if role == 'Manager' and workgroup.manager_id != user_id:
+            return jsonify({"error": "Unauthorized"}), 403
 
     query = Bug.query
 
-    if role == "Manager":
+    if workgroup_id:
+        # Filter bugs by workgroup - get engineers assigned to this workgroup
+        engineer_ids = db.session.query(WorkgroupAssignment.employee_id).filter(
+            WorkgroupAssignment.workgroup_id == workgroup_id
+        ).all()
+        engineer_ids = [e[0] for e in engineer_ids]
+        
+        if not engineer_ids:
+            # No engineers assigned to this workgroup
+            return jsonify({"repro": [], "test": []})
+        
+        query = query.filter(Bug.engineer_id.in_(engineer_ids))
+    elif role == "Manager":
         # Only include bugs whose engineer belongs to a workgroup managed by this manager
         engineer_ids_subq = (
                db.session.query(db.func.distinct(WorkgroupAssignment.employee_id))
@@ -86,6 +123,7 @@ def get_bugs():
 
         data = {
             "id": b.bug_code,
+            "priority": b.priority,
             "engineer": {
                 "name": b.engineer.full_name if b.engineer else "Unassigned",
                 "initials": (
@@ -94,6 +132,7 @@ def get_bugs():
                 ),
                 "color": "#7c3aed"
             },
+            "summary": b.summary or "",
             "tests": [t.test_name for t in b.tests],
             "stations": [s.station_name for s in b.stations],
             "config": b.station_config,
@@ -154,10 +193,37 @@ def bug_stats():
 
     user_id = session["user_id"]
     role = session.get("role")
+    workgroup_id = request.args.get('workgroup_id', type=int)
+
+    # Authorization check for workgroup access
+    if workgroup_id:
+        workgroup = Workgroup.query.get(workgroup_id)
+        if not workgroup:
+            return jsonify({"error": "Workgroup not found"}), 404
+        
+        # Only the manager who owns this workgroup can view its stats
+        if role == 'Manager' and workgroup.manager_id != user_id:
+            return jsonify({"error": "Unauthorized"}), 403
 
     query = Bug.query
 
-    if role == "Manager":
+    if workgroup_id:
+        # Filter bugs by workgroup
+        engineer_ids = db.session.query(WorkgroupAssignment.employee_id).filter(
+            WorkgroupAssignment.workgroup_id == workgroup_id
+        ).all()
+        engineer_ids = [e[0] for e in engineer_ids]
+        
+        if not engineer_ids:
+            return jsonify({
+                "totalBugs": 0,
+                "reproBugs": 0,
+                "testBugs": 0,
+                "pendingActions": 0
+            })
+        
+        query = query.filter(Bug.engineer_id.in_(engineer_ids))
+    elif role == "Manager":
        engineer_ids_subq = (
             db.session.query(db.func.distinct(WorkgroupAssignment.employee_id))
             .join(Workgroup, WorkgroupAssignment.workgroup_id == Workgroup.id)
@@ -179,6 +245,100 @@ def bug_stats():
         "testBugs": test,
         "pendingActions": pending
     })
+
+
+
+# --------------------------------------------------
+# SEARCH BUGS (autocomplete suggestions)
+# --------------------------------------------------
+@bug.route("/api/bugs/search", methods=["GET"])
+def search_bugs():
+
+    if "user_id" not in session:
+        return jsonify({"error": "Not logged in"}), 401
+
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify([])
+
+    user_id = session["user_id"]
+    role = session.get("role")
+    workgroup_id = request.args.get("workgroup_id", type=int)
+    pattern = f"%{q}%"
+    MAX_SUGGESTIONS = 7
+
+    # ── Build base query with same role-based filtering as get_bugs ──
+    base_query = Bug.query
+
+    if workgroup_id:
+        engineer_ids = db.session.query(WorkgroupAssignment.employee_id).filter(
+            WorkgroupAssignment.workgroup_id == workgroup_id
+        ).all()
+        engineer_ids = [e[0] for e in engineer_ids]
+        if not engineer_ids:
+            return jsonify([])
+        base_query = base_query.filter(Bug.engineer_id.in_(engineer_ids))
+    elif role == "Manager":
+        engineer_ids = select(WorkgroupAssignment.employee_id).join(
+            Workgroup, Workgroup.id == WorkgroupAssignment.workgroup_id
+        ).where(Workgroup.manager_id == user_id)
+        base_query = base_query.filter(Bug.engineer_id.in_(engineer_ids))
+    elif role == "Engineer":
+        base_query = base_query.filter(Bug.engineer_id == user_id)
+
+    # ── Collect suggestions from four categories ──
+    suggestions = []
+    seen = set()
+
+    def add_suggestion(type_label, value, bug_code):
+        key = (type_label, value)
+        if key not in seen and len(suggestions) < MAX_SUGGESTIONS:
+            seen.add(key)
+            suggestions.append({
+                "type": type_label,
+                "value": value,
+                "bug_code": bug_code
+            })
+
+    # 1) Bug ID matches
+    bug_id_matches = base_query.filter(Bug.bug_code.ilike(pattern)).limit(MAX_SUGGESTIONS).all()
+    for b in bug_id_matches:
+        add_suggestion("Bug ID", b.bug_code, b.bug_code)
+
+    # 2) Engineer name matches
+    if len(suggestions) < MAX_SUGGESTIONS:
+        engineer_bugs = base_query.join(User, Bug.engineer_id == User.id).filter(
+            or_(
+                User.first_name.ilike(pattern),
+                User.last_name.ilike(pattern),
+                db.func.concat(User.first_name, ' ', User.last_name).ilike(pattern)
+            )
+        ).limit(MAX_SUGGESTIONS).all()
+        for b in engineer_bugs:  
+            if b.engineer:
+                add_suggestion("Engineer", b.engineer.full_name, b.bug_code)
+
+    # 3) Test name matches
+    if len(suggestions) < MAX_SUGGESTIONS:
+        test_bugs = base_query.join(BugTest, Bug.id == BugTest.bug_id).filter(
+            BugTest.test_name.ilike(pattern)
+        ).limit(MAX_SUGGESTIONS).all()
+        for b in test_bugs:  
+            for t in b.tests:
+                if q.lower() in t.test_name.lower():
+                    add_suggestion("Test", t.test_name, b.bug_code)
+
+    # 4) Station name matches
+    if len(suggestions) < MAX_SUGGESTIONS:
+        station_bugs = base_query.join(BugStation, Bug.id == BugStation.bug_id).filter(
+            BugStation.station_name.ilike(pattern)
+        ).limit(MAX_SUGGESTIONS).all()
+        for b in station_bugs:  
+            for s in b.stations:
+                if q.lower() in s.station_name.lower():
+                    add_suggestion("Station", s.station_name, b.bug_code)
+
+    return jsonify(suggestions)
 
 
 # --------------------------------------------------

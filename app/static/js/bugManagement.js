@@ -53,7 +53,9 @@ const dom = {
     reproBugsCount: $('#reproBugsCount'),
     testBugsCount: $('#testBugsCount'),
     reproBugsBody: $('#reproBugsBody'),
-    testBugsBody: $('#testBugsBody')
+    testBugsBody: $('#testBugsBody'),
+    searchInput: $('#searchInput'),
+    searchDropdown: $('#searchDropdown')
 };
 
 /* =========================================
@@ -109,13 +111,29 @@ async function loadCurrentUser() {
 }
 
 
-async function loadBugsData(){
-    const data = await apiFetch('/api/bugs');
-    const stats = await apiFetch('/api/bugs/stats');
-    if(stats){
+/* ── Store original bug data for search filtering ── */
+let allReproBugs = [];
+let allTestBugs = [];
+
+async function loadBugsData() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const workgroupId = urlParams.get('workgroup_id');
+    const apiPath = workgroupId ? `/api/bugs?workgroup_id=${workgroupId}` : '/api/bugs';
+    const statsPath = workgroupId ? `/api/bugs/stats?workgroup_id=${workgroupId}` : '/api/bugs/stats';
+
+    console.log('Loading bugs from:', apiPath);
+    const data = await apiFetch(apiPath);
+    console.log('Bugs data received:', data);
+
+    const stats = await apiFetch(statsPath);
+    console.log('Stats data received:', stats);
+
+    if (stats) {
         renderStats(stats);
     }
-    if(data){
+    if (data) {
+        allReproBugs = data.repro;
+        allTestBugs = data.test;
         renderBugs(data.repro, data.test);
     }
 }
@@ -187,13 +205,24 @@ function generateBadgesHtml(items, type) {
 }
 
 function generateBugsTableRows(bugs) {
-    return bugs.map(bug => `
+    return bugs.map(bug => {
+        const priorityClass = {
+            'P0': 'priority-p0',
+            'P1': 'priority-p1',
+            'P2': 'priority-p2',
+            'P3': 'priority-p3',
+            'P4': 'priority-p4'
+        }[bug.priority] || 'priority-p2';
+
+        return `
         <tr class="bug-row" onmouseenter="this.style.backgroundColor='#f1f5f9'" onmouseleave="this.style.backgroundColor=''">
+            <td><span class="priority-badge ${priorityClass}">${escapeHtml(bug.priority || 'P2')}</span></td>
             <td class="bug-id-cell">${escapeHtml(bug.id)}</td>
             <td class="engineer-cell">
                 <div class="engineer-avatar" style="background: ${bug.engineer.color}">${escapeHtml(bug.engineer.initials)}</div>
                 <span class="engineer-name">${escapeHtml(bug.engineer.name)}</span>
             </td>
+            <td class="summary-cell">${escapeHtml(bug.summary || 'No summary')}</td>
             <td>
                 <div class="tests-cell">
                     ${generateBadgesHtml(bug.tests, 'test')}
@@ -221,15 +250,149 @@ function generateBugsTableRows(bugs) {
                 </div>
             </td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function renderBugs(reproBugs, testBugs) {
+    console.log('Rendering repro bugs:', reproBugs);
+    console.log('Rendering test bugs:', testBugs);
+
     dom.reproBugsCount.textContent = `${reproBugs.length} bugs`;
     dom.testBugsCount.textContent = `${testBugs.length} bugs`;
 
     dom.reproBugsBody.innerHTML = generateBugsTableRows(reproBugs);
     dom.testBugsBody.innerHTML = generateBugsTableRows(testBugs);
+}
+
+/* =========================================
+   Dynamic Search
+   ========================================= */
+
+let searchDebounceTimer = null;
+
+function getSearchWorkgroupId() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('workgroup_id');
+}
+
+/**
+ * Highlight matched text within a string.
+ */
+function highlightMatch(text, query) {
+    if (!query) return escapeHtml(text);
+    const escaped = escapeHtml(text);
+    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    return escaped.replace(regex, '<mark>$1</mark>');
+}
+
+/**
+ * Get the CSS class for a suggestion type tag.
+ */
+function getTagClass(type) {
+    switch (type) {
+        case 'Bug ID': return 'search-dropdown-tag--bugid';
+        case 'Engineer': return 'search-dropdown-tag--engineer';
+        case 'Test': return 'search-dropdown-tag--test';
+        case 'Station': return 'search-dropdown-tag--station';
+        default: return '';
+    }
+}
+
+/**
+ * Render search suggestions in the dropdown.
+ */
+function renderSearchDropdown(suggestions, query) {
+    if (!suggestions || suggestions.length === 0) {
+        dom.searchDropdown.innerHTML = `
+            <div class="search-dropdown-empty">
+                <span>No results found for "<strong>${escapeHtml(query)}</strong>"</span>
+            </div>`;
+        dom.searchDropdown.classList.remove('hidden');
+        return;
+    }
+
+    const html = suggestions.map(s => `
+        <div class="search-dropdown-item"
+             data-type="${escapeHtml(s.type)}"
+             data-value="${escapeHtml(s.value)}"
+             data-bugcode="${escapeHtml(s.bug_code)}">
+            <span class="search-dropdown-tag ${getTagClass(s.type)}">${escapeHtml(s.type)}</span>
+            <span class="search-dropdown-value">${highlightMatch(s.value, query)}</span>
+        </div>
+    `).join('');
+
+    dom.searchDropdown.innerHTML = html;
+    dom.searchDropdown.classList.remove('hidden');
+
+    // Attach click handlers
+    dom.searchDropdown.querySelectorAll('.search-dropdown-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const type = item.dataset.type;
+            const value = item.dataset.value;
+            dom.searchInput.value = value;
+            dom.searchDropdown.classList.add('hidden');
+            filterBugsBySelection(type, value);
+        });
+    });
+}
+
+/**
+ * Filter both repro and test bug tables based on the selected suggestion.
+ */
+function filterBugsBySelection(type, value) {
+    const valueLower = value.toLowerCase();
+
+    function bugMatches(bug) {
+        switch (type) {
+            case 'Bug ID':
+                return bug.id.toLowerCase() === valueLower;
+            case 'Engineer':
+                return bug.engineer.name.toLowerCase() === valueLower;
+            case 'Test':
+                return bug.tests.some(t => t.toLowerCase() === valueLower);
+            case 'Station':
+                return bug.stations.some(s => s.toLowerCase() === valueLower);
+            default:
+                return false;
+        }
+    }
+
+    const filteredRepro = allReproBugs.filter(bugMatches);
+    const filteredTest = allTestBugs.filter(bugMatches);
+    renderBugs(filteredRepro, filteredTest);
+}
+
+/**
+ * Reset tables to show all bugs.
+ */
+function resetBugTables() {
+    renderBugs(allReproBugs, allTestBugs);
+}
+
+/**
+ * Handle search input with debouncing.
+ */
+function handleSearchInput() {
+    clearTimeout(searchDebounceTimer);
+    const query = dom.searchInput.value.trim();
+
+    if (!query) {
+        dom.searchDropdown.classList.add('hidden');
+        resetBugTables();
+        return;
+    }
+
+    searchDebounceTimer = setTimeout(async () => {
+        const workgroupId = getSearchWorkgroupId();
+        let apiPath = `/api/bugs/search?q=${encodeURIComponent(query)}`;
+        if (workgroupId) apiPath += `&workgroup_id=${workgroupId}`;
+
+        const suggestions = await apiFetch(apiPath);
+        if (suggestions !== null) {
+            renderSearchDropdown(suggestions, query);
+        }
+    }, 250);
 }
 
 /* =========================================
@@ -263,14 +426,35 @@ function initEventListeners() {
             }
         });
     });
+
+    // ── Dynamic Search ──
+    if (dom.searchInput) {
+        dom.searchInput.addEventListener('input', handleSearchInput);
+
+        // Close dropdown on Escape
+        dom.searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                dom.searchDropdown.classList.add('hidden');
+            }
+        });
+    }
 }
 
 function closeAllDropdowns() {
     dom.profileDropdown.classList.add('hidden');
+    if (dom.searchDropdown) dom.searchDropdown.classList.add('hidden');
 }
 
 // Close dropdowns on outside click
-document.addEventListener('click', () => closeAllDropdowns());
+document.addEventListener('click', (e) => {
+    // Don't close search dropdown if clicking inside the search area
+    const searchContainer = document.querySelector('.search-container');
+    if (searchContainer && searchContainer.contains(e.target)) {
+        dom.profileDropdown.classList.add('hidden');
+        return;
+    }
+    closeAllDropdowns();
+});
 
 /* =========================================
    Utilities
@@ -294,3 +478,4 @@ async function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+

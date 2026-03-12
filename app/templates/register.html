@@ -131,7 +131,7 @@
   {% endif %}
 {% endwith %}
 
-<form method="POST" action="{{ url_for('auth.register') }}" class="space-y-5" onsubmit="return validatePasswords()">
+<form method="POST" action="{{ url_for('auth.register') }}" class="space-y-5" onsubmit="return validateEmail() && validatePasswords()">
 
     <!-- First + Last Name -->
     <div class="grid grid-cols-2 gap-4">
@@ -156,9 +156,14 @@
     <div>
         <label class="block text-sm font-medium text-gray-700 mb-2">Email address</label>
         <input type="email" name="email"
-               placeholder="you@company.com"
+               id="emailInput"
+               placeholder="you@hpe.com or you@gmail.com"
+               pattern=".+@(hpe|gmail)\.com$"
+               title="Email must end with @hpe.com or @gmail.com"
                class="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-               required>
+               required
+               oninput="validateEmail()">
+        <p id="emailError" class="text-red-600 text-xs mt-1" style="display:none;">Only @hpe.com or @gmail.com emails are allowed</p>
     </div>
 
     <!-- Role -->
@@ -244,6 +249,19 @@
 function togglePassword(id) {
     const input = document.getElementById(id);
     input.type = input.type === "password" ? "text" : "password";
+}
+
+function validateEmail() {
+    const email = document.getElementById('emailInput').value;
+    const error = document.getElementById('emailError');
+    const emailRegex = /^[^\s@]+@(hpe|gmail)\.com$/i;
+
+    if (email && !emailRegex.test(email)) {
+        error.style.display = 'block';
+        return false;
+    }
+    error.style.display = 'none';
+    return true;
 }
 
 function validatePasswords() {

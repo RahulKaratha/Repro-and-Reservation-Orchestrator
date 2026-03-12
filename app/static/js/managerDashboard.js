@@ -137,6 +137,7 @@ async function loadWorkgroups(skipApiIfLocal = false) {
     if (!skipApiIfLocal) dom.workgroupsList.innerHTML = '';
 
     const data = await apiFetch('/api/workgroups');
+    console.log('Workgroups loaded:', data);
     if (data && Array.isArray(data)) {
         workgroups = data;
     }
@@ -274,13 +275,17 @@ function renderWorkgroups() {
             </svg>
           </button>
           <div class="wg-card-dropdown hidden" data-dropdown-id="${wg.id}">
+            <button class="wg-dropdown-item" data-action="view" data-id="${wg.id}">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2" stroke="#334155" stroke-width="1.2"/><path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z" stroke="#334155" stroke-width="1.2"/></svg>
+              View Bugs
+            </button>
             <button class="wg-dropdown-item" data-action="edit" data-id="${wg.id}">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" stroke="#334155" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
               Edit Workgroup
             </button>
-            <button class="wg-dropdown-item wg-dropdown-item--green" data-action="markdone" data-id="${wg.id}">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="#16a34a" stroke-width="1.2"/><path d="M5.5 8l2 2 3.5-4" stroke="#16a34a" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Mark as Done
+            <button class="wg-dropdown-item ${wg.is_completed ? 'wg-dropdown-item--amber' : 'wg-dropdown-item--green'}" data-action="markdone" data-id="${wg.id}">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="${wg.is_completed ? '#f59e0b' : '#16a34a'}" stroke-width="1.2"/><path d="M5.5 8l2 2 3.5-4" stroke="${wg.is_completed ? '#f59e0b' : '#16a34a'}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              ${wg.is_completed ? 'Mark as Active' : 'Mark as Done'}
             </button>
             <button class="wg-dropdown-item wg-dropdown-item--red" data-action="delete" data-id="${wg.id}">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5" stroke="#dc2626" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 4l1 9a1 1 0 001 1h6a1 1 0 001-1l1-9" stroke="#dc2626" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -306,9 +311,9 @@ function renderWorkgroups() {
       </div>
       <div class="wg-card-footer">
         <span class="wg-card-date">${createdDate}</span>
-        <button class="wg-mark-done-btn" data-id="${wg.id}">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#16a34a" stroke-width="1.1"/><path d="M4.5 7l2 2 3.5-3.5" stroke="#16a34a" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          Mark Done
+        <button class="wg-view-bugs-btn" data-id="${wg.id}">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="2" stroke="#7c3aed" stroke-width="1.1"/><path d="M1 7s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z" stroke="#7c3aed" stroke-width="1.1"/></svg>
+          View Bugs
         </button>
       </div>
     `;
@@ -352,15 +357,16 @@ function attachCardMenuListeners() {
             if (action === 'delete') handleDeleteWorkgroup(id);
             else if (action === 'markdone') handleMarkDone(id);
             else if (action === 'edit') handleEditWorkgroup(id);
+            else if (action === 'view') window.location.href = `/bug_management?workgroup_id=${id}`;
         });
     });
 
-    // Mark Done shortcut buttons at bottom of card
-    document.querySelectorAll('.wg-mark-done-btn').forEach(btn => {
+    // View Bugs buttons at bottom of card
+    document.querySelectorAll('.wg-view-bugs-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const id = parseInt(btn.dataset.id);
-            handleMarkDone(id);
+            window.location.href = `/bug_management?workgroup_id=${id}`;
         });
     });
 }
@@ -694,6 +700,13 @@ function initEventListeners() {
         e.target.classList.add('active');
         currentFilter = e.target.dataset.filter;
         renderWorkgroups();
+    });
+    
+    // Update step indicators when engineers are checked/unchecked
+    dom.engineersList.addEventListener('change', (e) => {
+        if (e.target.type === 'checkbox') {
+            updateStepIndicators();
+        }
     });
 }
 
