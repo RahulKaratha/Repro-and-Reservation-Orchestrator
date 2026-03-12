@@ -110,8 +110,18 @@ async function loadCurrentUser() {
 
 
 async function loadBugsData(){
-    const data = await apiFetch('/api/bugs');
-    const stats = await apiFetch('/api/bugs/stats');
+    const urlParams = new URLSearchParams(window.location.search);
+    const workgroupId = urlParams.get('workgroup_id');
+    const apiPath = workgroupId ? `/api/bugs?workgroup_id=${workgroupId}` : '/api/bugs';
+    const statsPath = workgroupId ? `/api/bugs/stats?workgroup_id=${workgroupId}` : '/api/bugs/stats';
+    
+    console.log('Loading bugs from:', apiPath);
+    const data = await apiFetch(apiPath);
+    console.log('Bugs data received:', data);
+    
+    const stats = await apiFetch(statsPath);
+    console.log('Stats data received:', stats);
+    
     if(stats){
         renderStats(stats);
     }
@@ -187,13 +197,24 @@ function generateBadgesHtml(items, type) {
 }
 
 function generateBugsTableRows(bugs) {
-    return bugs.map(bug => `
+    return bugs.map(bug => {
+        const priorityClass = {
+            'P0': 'priority-p0',
+            'P1': 'priority-p1',
+            'P2': 'priority-p2',
+            'P3': 'priority-p3',
+            'P4': 'priority-p4'
+        }[bug.priority] || 'priority-p2';
+        
+        return `
         <tr class="bug-row" onmouseenter="this.style.backgroundColor='#f1f5f9'" onmouseleave="this.style.backgroundColor=''">
+            <td><span class="priority-badge ${priorityClass}">${escapeHtml(bug.priority || 'P2')}</span></td>
             <td class="bug-id-cell">${escapeHtml(bug.id)}</td>
             <td class="engineer-cell">
                 <div class="engineer-avatar" style="background: ${bug.engineer.color}">${escapeHtml(bug.engineer.initials)}</div>
                 <span class="engineer-name">${escapeHtml(bug.engineer.name)}</span>
             </td>
+            <td class="summary-cell">${escapeHtml(bug.summary || 'No summary')}</td>
             <td>
                 <div class="tests-cell">
                     ${generateBadgesHtml(bug.tests, 'test')}
@@ -221,10 +242,14 @@ function generateBugsTableRows(bugs) {
                 </div>
             </td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function renderBugs(reproBugs, testBugs) {
+    console.log('Rendering repro bugs:', reproBugs);
+    console.log('Rendering test bugs:', testBugs);
+    
     dom.reproBugsCount.textContent = `${reproBugs.length} bugs`;
     dom.testBugsCount.textContent = `${testBugs.length} bugs`;
 

@@ -18,7 +18,19 @@ def bug_management():
     if "user_id" not in session:
         return redirect(url_for("auth.login"))
 
-    return render_template("bugManagement.html")
+    workgroup_id = request.args.get('workgroup_id', type=int)
+    workgroup = None
+    
+    if workgroup_id:
+        workgroup = Workgroup.query.get(workgroup_id)
+        if not workgroup:
+            return redirect(url_for("manager.manager_dashboard"))
+        
+        # Authorization: Only the manager who owns this workgroup can view it
+        if session.get('role') == 'Manager' and workgroup.manager_id != session['user_id']:
+            return redirect(url_for("manager.manager_dashboard"))
+
+    return render_template("bugManagement.html", workgroup=workgroup)
 
 
 # --------------------------------------------------
@@ -51,10 +63,33 @@ def get_bugs():
 
     user_id = session["user_id"]
     role = session.get("role")
+    workgroup_id = request.args.get('workgroup_id', type=int)
+
+    # Authorization check for workgroup access
+    if workgroup_id:
+        workgroup = Workgroup.query.get(workgroup_id)
+        if not workgroup:
+            return jsonify({"error": "Workgroup not found"}), 404
+        
+        # Only the manager who owns this workgroup can view its bugs
+        if role == 'Manager' and workgroup.manager_id != user_id:
+            return jsonify({"error": "Unauthorized"}), 403
 
     query = Bug.query
 
-    if role == "Manager":
+    if workgroup_id:
+        # Filter bugs by workgroup - get engineers assigned to this workgroup
+        engineer_ids = db.session.query(WorkgroupAssignment.employee_id).filter(
+            WorkgroupAssignment.workgroup_id == workgroup_id
+        ).all()
+        engineer_ids = [e[0] for e in engineer_ids]
+        
+        if not engineer_ids:
+            # No engineers assigned to this workgroup
+            return jsonify({"repro": [], "test": []})
+        
+        query = query.filter(Bug.engineer_id.in_(engineer_ids))
+    elif role == "Manager":
         # Only include bugs whose engineer belongs to a workgroup managed by this manager
         engineer_ids_subq = (
                db.session.query(db.func.distinct(WorkgroupAssignment.employee_id))
@@ -86,6 +121,7 @@ def get_bugs():
 
         data = {
             "id": b.bug_code,
+            "priority": b.priority,
             "engineer": {
                 "name": b.engineer.full_name if b.engineer else "Unassigned",
                 "initials": (
@@ -94,6 +130,7 @@ def get_bugs():
                 ),
                 "color": "#7c3aed"
             },
+            "summary": b.summary or "",
             "tests": [t.test_name for t in b.tests],
             "stations": [s.station_name for s in b.stations],
             "config": b.station_config,
@@ -154,10 +191,37 @@ def bug_stats():
 
     user_id = session["user_id"]
     role = session.get("role")
+    workgroup_id = request.args.get('workgroup_id', type=int)
+
+    # Authorization check for workgroup access
+    if workgroup_id:
+        workgroup = Workgroup.query.get(workgroup_id)
+        if not workgroup:
+            return jsonify({"error": "Workgroup not found"}), 404
+        
+        # Only the manager who owns this workgroup can view its stats
+        if role == 'Manager' and workgroup.manager_id != user_id:
+            return jsonify({"error": "Unauthorized"}), 403
 
     query = Bug.query
 
-    if role == "Manager":
+    if workgroup_id:
+        # Filter bugs by workgroup
+        engineer_ids = db.session.query(WorkgroupAssignment.employee_id).filter(
+            WorkgroupAssignment.workgroup_id == workgroup_id
+        ).all()
+        engineer_ids = [e[0] for e in engineer_ids]
+        
+        if not engineer_ids:
+            return jsonify({
+                "totalBugs": 0,
+                "reproBugs": 0,
+                "testBugs": 0,
+                "pendingActions": 0
+            })
+        
+        query = query.filter(Bug.engineer_id.in_(engineer_ids))
+    elif role == "Manager":
        engineer_ids_subq = (
             db.session.query(db.func.distinct(WorkgroupAssignment.employee_id))
             .join(Workgroup, WorkgroupAssignment.workgroup_id == Workgroup.id)

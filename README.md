@@ -103,6 +103,14 @@ Run the Flask migrations:
 flask db upgrade
 ```
 
+Or use the initialization script:
+
+```bash
+python init_db.py
+```
+
+This will create all tables with proper schema, foreign keys, and indexes.
+
 If you encounter any issues, you can also create tables manually:
 
 ```bash
@@ -111,18 +119,11 @@ flask shell
 
 Then in the Python shell:
 ```python
-from app import create_app, db
-from app.models.user import User
-from app.models.workgroup import Workgroup
-from app.models.workgroupAssignment import WorkgroupAssignment
-from app.models.bug import Bug
-from app.models.bug_tests import BugTest
-from app.models.bug_stations import BugStation
-
-app = create_app()
-with app.app_context():
-    db.create_all()
+from app import db
+db.create_all()
 ```
+
+**Note:** See `DATABASE_SCHEMA.md` for complete schema documentation.
 
 ## ▶️ Running the Application
 

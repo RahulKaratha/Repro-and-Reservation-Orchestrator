@@ -53,10 +53,15 @@ def register():
             flash("Passwords do not match!", "danger")
             return redirect(url_for('auth.register'))
 
+        if len(password_raw) < 6:
+            flash("Password must be at least 6 characters", "danger")
+            return redirect(url_for('auth.register'))
+
         existing_user = User.query.filter_by(email=email).first()
 
         if existing_user:
-            flash("Email already exists!", "warning")
+            flash("Email already registered", "danger")
+            return redirect(url_for('auth.register'))
         else:
             hashed_password = generate_password_hash(password_raw)
 
@@ -71,7 +76,7 @@ def register():
             db.session.add(new_user)
             db.session.commit()
 
-            flash("Account created successfully!", "success")
+            flash("Account created successfully! Please sign in.", "success")
             return redirect(url_for('auth.login'))
 
     return render_template("register.html")

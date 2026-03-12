@@ -88,8 +88,8 @@
     <main class="dashboard">
         <!-- Header Section -->
         <section class="page-header">
-            <h1 class="page-title">Bug Management</h1>
-            <p class="page-subtitle">Manage repro and test bugs, assign resource groups, and schedule test runs</p>
+            <h1 class="page-title">Bug Management{% if workgroup %} - {{ workgroup.name }}{% endif %}</h1>
+            <p class="page-subtitle">{% if workgroup %}Viewing bugs for workgroup: {{ workgroup.name }} (Release {{ workgroup.release_version }}){% else %}Manage repro and test bugs, assign resource groups, and schedule test runs{% endif %}</p>
         </section>
 
         <!-- Search Bar -->
@@ -155,8 +155,10 @@
                     <table class="bugs-table">
                         <thead>
                             <tr>
+                                <th>PRIORITY</th>
                                 <th>BUG ID</th>
                                 <th>ENGINEER</th>
+                                <th>SUMMARY</th>
                                 <th>TESTS</th>
                                 <th>STATIONS</th>
                                 <th>STATION CONFIG</th>
@@ -196,8 +198,10 @@
                     <table class="bugs-table">
                         <thead>
                             <tr>
+                                <th>PRIORITY</th>
                                 <th>BUG ID</th>
                                 <th>ENGINEER</th>
+                                <th>SUMMARY</th>
                                 <th>TESTS</th>
                                 <th>STATIONS</th>
                                 <th>STATION CONFIG</th>

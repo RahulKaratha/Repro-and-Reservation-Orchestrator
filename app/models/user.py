@@ -4,12 +4,18 @@ class User(db.Model):
 
     __tablename__ = "Users"
 
-    id = db.Column("ID", db.Integer, primary_key=True)
+    id = db.Column("ID", db.Integer, primary_key=True, autoincrement=True)
     first_name = db.Column("First_Name", db.String(10), nullable=False)
     last_name = db.Column("Last_Name", db.String(10))
     email = db.Column("Email", db.String(100), unique=True, nullable=False)
     password = db.Column("Password", db.String(255), nullable=False)
     role = db.Column("Role", db.Enum('Engineer', 'Manager'), nullable=False)
+
+    # Indexes
+    __table_args__ = (
+        db.Index('idx_role', 'Role'),
+        db.Index('idx_email', 'Email'),
+    )
 
     # Relationships
     managed_workgroups = db.relationship(
