@@ -626,19 +626,53 @@ function escapeHtml(str) {
 }
 
 function renderEngineers() {
+    const searchBox = document.getElementById('engineersSearch');
     if (engineers.length === 0) {
         dom.engineersEmpty.style.display = '';
         dom.engineersList.style.display = 'none';
+        if (searchBox) searchBox.style.display = 'none';
         return;
     }
     dom.engineersEmpty.style.display = 'none';
     dom.engineersList.style.display = '';
+    if (searchBox) searchBox.style.display = '';
     dom.engineersList.innerHTML = engineers.map(eng => `
-    <div class="engineer-item">
+    <div class="engineer-item" data-name="${escapeHtml(eng.name.toLowerCase())}" data-email="${escapeHtml(eng.email.toLowerCase())}">
       <input type="checkbox" id="eng-${eng.id}" value="${eng.id}" />
       <label for="eng-${eng.id}">${escapeHtml(eng.name)} — ${escapeHtml(eng.email)}</label>
     </div>
   `).join('');
+
+    // Reset search input
+    const searchInput = document.getElementById('engineerSearchInput');
+    if (searchInput) searchInput.value = '';
+}
+
+function filterEngineersSearch(query) {
+    const items = document.querySelectorAll('#engineersList .engineer-item');
+    const q = query.toLowerCase().trim();
+    let visibleCount = 0;
+    items.forEach(item => {
+        const name = item.dataset.name || '';
+        const email = item.dataset.email || '';
+        const matches = !q || name.includes(q) || email.includes(q);
+        item.style.display = matches ? '' : 'none';
+        if (matches) visibleCount++;
+    });
+    // Show a "no results" message if nothing matches
+    let noResult = document.getElementById('engineerSearchNoResult');
+    if (visibleCount === 0 && q) {
+        if (!noResult) {
+            noResult = document.createElement('p');
+            noResult.id = 'engineerSearchNoResult';
+            noResult.className = 'engineer-search-no-result';
+            noResult.textContent = 'No engineers match your search.';
+            dom.engineersList.appendChild(noResult);
+        }
+        noResult.style.display = '';
+    } else if (noResult) {
+        noResult.style.display = 'none';
+    }
 }
 
 /* =========================================
@@ -708,6 +742,14 @@ function initEventListeners() {
             updateStepIndicators();
         }
     });
+
+    // Engineer search — dynamic filtering
+    const engineerSearchInput = document.getElementById('engineerSearchInput');
+    if (engineerSearchInput) {
+        engineerSearchInput.addEventListener('input', (e) => {
+            filterEngineersSearch(e.target.value);
+        });
+    }
 }
 
 /* =========================================
