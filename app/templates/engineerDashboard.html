@@ -44,12 +44,6 @@
 
         </div>
 
-
-        <div class="hidden md:flex items-center gap-6">
-            <a href="{{ url_for('engineer.engineer_dashboard') }}"
-                class="text-sm font-semibold text-slate-200 hover:text-white transition">Dashboard</a>
-        </div>
-
         <div class="flex items-center space-x-4">
 
             <div class="relative inline-block text-left">
@@ -258,6 +252,27 @@
         }
     </script>
     <script src="{{ url_for('static', filename='js/engineerDashboard.js') }}" defer></script>
+    <!-- Load the SocketIO client library -->
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+<script>
+  const socket = io();   // connects to the server automatically
+
+  // When another user creates a workgroup, reload the list
+  socket.on("workgroup_created", () => {
+    loadWorkgroups();   
+  });
+
+  // When another user updates a workgroup, reload the list
+  socket.on("workgroup_updated", () => {
+    loadWorkgroups();
+  });
+
+  // When another user deletes a workgroup, reload the list
+  socket.on("workgroup_deleted", () => {
+    loadWorkgroups();
+  });
+</script>
 </body>
 
 </html>
