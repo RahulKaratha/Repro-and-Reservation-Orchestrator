@@ -314,7 +314,7 @@ def search_bugs():
                 db.func.concat(User.first_name, ' ', User.last_name).ilike(pattern)
             )
         ).limit(MAX_SUGGESTIONS).all()
-        for b in engineer_bugs:  # type: Bug
+        for b in engineer_bugs:  
             if b.engineer:
                 add_suggestion("Engineer", b.engineer.full_name, b.bug_code)
 
@@ -323,7 +323,7 @@ def search_bugs():
         test_bugs = base_query.join(BugTest, Bug.id == BugTest.bug_id).filter(
             BugTest.test_name.ilike(pattern)
         ).limit(MAX_SUGGESTIONS).all()
-        for b in test_bugs:  # type: Bug
+        for b in test_bugs:  
             for t in b.tests:
                 if q.lower() in t.test_name.lower():
                     add_suggestion("Test", t.test_name, b.bug_code)
@@ -333,7 +333,7 @@ def search_bugs():
         station_bugs = base_query.join(BugStation, Bug.id == BugStation.bug_id).filter(
             BugStation.station_name.ilike(pattern)
         ).limit(MAX_SUGGESTIONS).all()
-        for b in station_bugs:  # type: Bug
+        for b in station_bugs:  
             for s in b.stations:
                 if q.lower() in s.station_name.lower():
                     add_suggestion("Station", s.station_name, b.bug_code)
