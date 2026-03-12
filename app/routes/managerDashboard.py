@@ -5,6 +5,7 @@ from app.models.workgroup import Workgroup
 from app.models.workgroupAssignment import WorkgroupAssignment
 from app.auth_utils import manager_required, login_required
 from datetime import datetime
+from app.extensions import db, socketio     
 
 manager = Blueprint("manager", __name__)
 
@@ -94,6 +95,7 @@ def create_workgroup():
 
         db.session.commit()
         print("Committed to database")  # Debug log
+        socketio.emit("workgroup_created", {"workgroup_id": wg.id})
         
         # Verify assignments were saved
         saved_assignments = WorkgroupAssignment.query.filter_by(workgroup_id=wg.id).all()
@@ -152,6 +154,7 @@ def update_workgroup(id):
             db.session.add(WorkgroupAssignment(workgroup_id=id, employee_id=eid))
 
     db.session.commit()
+    socketio.emit("workgroup_created", {"workgroup_id": wg.id})
 
     assignments = WorkgroupAssignment.query.filter_by(workgroup_id=id).all()
     engineers = []
@@ -176,6 +179,7 @@ def delete_workgroup(id):
     WorkgroupAssignment.query.filter_by(workgroup_id=id).delete()
     db.session.delete(wg)
     db.session.commit()
+    socketio.emit("workgroup_created", {"workgroup_id": wg.id})
     return jsonify({"message": "Workgroup deleted"})
 
 

@@ -27,14 +27,35 @@
                 <span class="brand-name">RRO</span>
                 <span class="brand-tagline">Repro &amp; Reservation Orchestrator</span>
             </div>
-            <div class="navbar-links">
-                <a href="{{ url_for('engineer.engineer_dashboard') }}" class="nav-link active">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor">
-                        <path
-                            d="M2.5 6.5L8 2L13.5 6.5V13.5C13.5 13.7652 13.3946 14.0196 13.2071 14.2071C13.0196 14.3946 12.7652 14.5 12.5 14.5H3.5C3.23478 14.5 2.98043 14.3946 2.79289 14.2071C2.60536 14.0196 2.5 13.7652 2.5 13.5V6.5Z"
-                            stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-                        <path d="M6 14.5V8.5H10V14.5" stroke-width="1.5" stroke-linecap="round"
-                            stroke-linejoin="round" />
+
+        </div>
+
+        <div class="flex items-center space-x-4">
+
+            <div class="relative inline-block text-left">
+
+                <!-- Trigger -->
+                <button onclick="toggleDropdown()" class="flex items-center gap-3 text-white">
+
+                    <div id="userAvatar"
+                        class="h-10 w-10 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-sm border-2 border-slate-700">
+                        ?
+                    </div>
+
+                    <div class="text-right">
+                        <p id="userName" class="text-sm font-semibold leading-none">
+                            Loading...
+                        </p>
+
+                        <span id="userRoleBadge"
+                            class="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full font-medium uppercase tracking-wider mt-1 inline-block">
+                            Engineer
+                        </span>
+                    </div>
+
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-400" fill="none"
+                        viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                     </svg>
                     Dashboard
                 </a>
@@ -247,6 +268,33 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/engineerDashboard.js') }}"></script>
+    <script>
+        function toggleDropdown() {
+            document.getElementById("dropdownMenu").classList.toggle("hidden");
+        }
+    </script>
+    <script src="{{ url_for('static', filename='js/engineerDashboard.js') }}" defer></script>
+    <!-- Load the SocketIO client library -->
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+<script>
+  const socket = io();   // connects to the server automatically
+
+  // When another user creates a workgroup, reload the list
+  socket.on("workgroup_created", () => {
+    loadWorkgroups();   
+  });
+
+  // When another user updates a workgroup, reload the list
+  socket.on("workgroup_updated", () => {
+    loadWorkgroups();
+  });
+
+  // When another user deletes a workgroup, reload the list
+  socket.on("workgroup_deleted", () => {
+    loadWorkgroups();
+  });
+</script>
 </body>
 
 </html>

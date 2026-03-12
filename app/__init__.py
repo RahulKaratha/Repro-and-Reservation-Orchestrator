@@ -1,6 +1,6 @@
 from flask import Flask
 from app.config import Config
-from app.extensions import db, login_manager, migrate, mail
+from app.extensions import db, login_manager, migrate, mail, socketio   
 from app.routes.auth import auth
 from app.routes.managerDashboard import manager
 from app.routes.engineer import engineer
@@ -14,10 +14,11 @@ def create_app():
     login_manager.init_app(flask_app)
     migrate.init_app(flask_app, db)
     mail.init_app(flask_app)
+    socketio.init_app(flask_app, cors_allowed_origins="*")   
 
     login_manager.login_view = "auth.login_page"
 
-    import app.auth_utils  # <-- important
+    import app.auth_utils
 
     flask_app.register_blueprint(auth)
     flask_app.register_blueprint(manager)
