@@ -31,6 +31,12 @@ let currentUser = null;
 let workgroups = [];
 let engineers = [];
 let currentFilter = 'all';
+let bugOwnershipFilter = 'workgroup';
+let activeWorkgroupId = null;
+
+function getAuthHeaders(headers = {}) {
+    return window.RROAuth ? window.RROAuth.getAuthHeaders(headers) : headers;
+}
 
 /* =========================================
    DOM References
@@ -55,7 +61,10 @@ const dom = {
     reproBugsBody: $('#reproBugsBody'),
     testBugsBody: $('#testBugsBody'),
     searchInput: $('#searchInput'),
-    searchDropdown: $('#searchDropdown')
+    searchDropdown: $('#searchDropdown'),
+    ownershipFilter: $('#ownershipFilter'),
+    filterWorkgroupBugs: $('#filterWorkgroupBugs'),
+    filterMyBugs: $('#filterMyBugs')
 };
 
 /* =========================================
@@ -69,7 +78,7 @@ const dom = {
 async function apiFetch(path, options = {}) {
     try {
         const res = await fetch(`${API_BASE}${path}`, {
-            headers: { 'Content-Type': 'application/json', ...options.headers },
+            headers: getAuthHeaders({ 'Content-Type': 'application/json', ...options.headers }),
             credentials: 'include',
             ...options,
         });
@@ -115,11 +124,62 @@ async function loadCurrentUser() {
 let allReproBugs = [];
 let allTestBugs = [];
 
-async function loadBugsData() {
+function getCurrentWorkgroupId() {
     const urlParams = new URLSearchParams(window.location.search);
-    const workgroupId = urlParams.get('workgroup_id');
-    const apiPath = workgroupId ? `/api/bugs?workgroup_id=${workgroupId}` : '/api/bugs';
-    const statsPath = workgroupId ? `/api/bugs/stats?workgroup_id=${workgroupId}` : '/api/bugs/stats';
+    return urlParams.get('workgroup_id');
+}
+
+function shouldShowEngineerOwnershipFilter() {
+    return currentUser?.role === 'Engineer' && !!activeWorkgroupId;
+}
+
+function buildBugQueryParams(extraParams = {}) {
+    const params = new URLSearchParams();
+
+    if (activeWorkgroupId) {
+        params.set('workgroup_id', activeWorkgroupId);
+    }
+
+    if (shouldShowEngineerOwnershipFilter() && bugOwnershipFilter === 'mine') {
+        params.set('my_only', 'true');
+    }
+
+    Object.entries(extraParams).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+            params.set(key, String(value));
+        }
+    });
+
+    return params;
+}
+
+function updateOwnershipFilterUi() {
+    if (!dom.ownershipFilter || !dom.filterWorkgroupBugs || !dom.filterMyBugs) return;
+
+    const showFilter = shouldShowEngineerOwnershipFilter();
+    dom.ownershipFilter.classList.toggle('hidden', !showFilter);
+
+    dom.filterWorkgroupBugs.classList.toggle('active', bugOwnershipFilter === 'workgroup');
+    dom.filterMyBugs.classList.toggle('active', bugOwnershipFilter === 'mine');
+}
+
+async function setBugOwnershipFilter(nextFilter) {
+    if (bugOwnershipFilter === nextFilter) return;
+
+    bugOwnershipFilter = nextFilter;
+    updateOwnershipFilterUi();
+
+    if (dom.searchInput) dom.searchInput.value = '';
+    if (dom.searchDropdown) dom.searchDropdown.classList.add('hidden');
+
+    await loadBugsData();
+}
+
+async function loadBugsData() {
+    const params = buildBugQueryParams();
+    const qs = params.toString();
+    const apiPath = qs ? `/api/bugs?${qs}` : '/api/bugs';
+    const statsPath = qs ? `/api/bugs/stats?${qs}` : '/api/bugs/stats';
 
     console.log('Loading bugs from:', apiPath);
     const data = await apiFetch(apiPath);
@@ -162,6 +222,8 @@ function renderUserInfo() {
     if (dom.userName) dom.userName.textContent = currentUser.fullName || currentUser.name;
     if (dom.userRoleBadge) dom.userRoleBadge.textContent = currentUser.role || 'Manager';
     if (dom.profileEmail) dom.profileEmail.textContent = currentUser.email || 'manager@rro.com';
+
+    updateOwnershipFilterUi();
 }
 
 function renderStats(stats) {
@@ -272,8 +334,7 @@ function renderBugs(reproBugs, testBugs) {
 let searchDebounceTimer = null;
 
 function getSearchWorkgroupId() {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('workgroup_id');
+    return activeWorkgroupId;
 }
 
 /**
@@ -384,9 +445,8 @@ function handleSearchInput() {
     }
 
     searchDebounceTimer = setTimeout(async () => {
-        const workgroupId = getSearchWorkgroupId();
-        let apiPath = `/api/bugs/search?q=${encodeURIComponent(query)}`;
-        if (workgroupId) apiPath += `&workgroup_id=${workgroupId}`;
+        const params = buildBugQueryParams({ q: query });
+        const apiPath = `/api/bugs/search?${params.toString()}`;
 
         const suggestions = await apiFetch(apiPath);
         if (suggestions !== null) {
@@ -410,10 +470,9 @@ function initEventListeners() {
     // Logout
     dom.btnLogout.addEventListener('click', async () => {
         await apiFetch('/api/auth/logout', { method: 'POST' });
-        // In local mock, simply reset currentUser
+        if (window.RROAuth) window.RROAuth.clearToken();
         currentUser = null;
-        alert('Logged out locally (mock).');
-        location.reload();
+        window.location.href = '/';
     });
 
     // Section Collapse Toggles
@@ -436,6 +495,19 @@ function initEventListeners() {
             if (e.key === 'Escape') {
                 dom.searchDropdown.classList.add('hidden');
             }
+        });
+    }
+
+    // Engineer bug ownership filter
+    if (dom.filterWorkgroupBugs) {
+        dom.filterWorkgroupBugs.addEventListener('click', () => {
+            setBugOwnershipFilter('workgroup');
+        });
+    }
+
+    if (dom.filterMyBugs) {
+        dom.filterMyBugs.addEventListener('click', () => {
+            setBugOwnershipFilter('mine');
         });
     }
 }
@@ -472,8 +544,10 @@ function escapeHtml(str) {
    ========================================= */
 
 async function init() {
+    activeWorkgroupId = getCurrentWorkgroupId();
     initEventListeners();
     await loadCurrentUser();
+    updateOwnershipFilterUi();
     await loadBugsData();
 }
 

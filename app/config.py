@@ -28,6 +28,7 @@ class Config:
     SESSION_COOKIE_SAMESITE = "Lax"
     # Set to True in production when using HTTPS
     SESSION_COOKIE_SECURE = os.getenv("FLASK_ENV") == "production"
+    TAB_SESSION_TTL_SECONDS = int(os.getenv("TAB_SESSION_TTL_SECONDS", 28800))
 
     MAIL_SERVER = os.getenv("MAIL_SERVER")
     MAIL_PORT = int(os.getenv("MAIL_PORT", 587))
