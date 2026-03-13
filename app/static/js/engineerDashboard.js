@@ -14,6 +14,14 @@ const API_BASE = '';
    ========================================= */
 let currentFilter = new URLSearchParams(window.location.search).get('filter') || 'all';
 
+function getAuthHeaders(headers = {}) {
+    return window.RROAuth ? window.RROAuth.getAuthHeaders(headers) : headers;
+}
+
+function withAuthUrl(path) {
+    return window.RROAuth ? window.RROAuth.appendAuthToken(path) : path;
+}
+
 /* =========================================
    DOM References
    ========================================= */
@@ -25,6 +33,7 @@ const dom = {
     profileEmail: document.getElementById('profileEmail'),
     profileDropdown: document.getElementById('profileDropdown'),
     profileDropdownTrigger: document.getElementById('profileDropdownTrigger'),
+    btnLogout: document.getElementById('btnLogout'),
     filterTabs: document.getElementById('filterTabs'),
     resultsCount: document.getElementById('resultsCount'),
     resultsPlural: document.getElementById('resultsPlural'),
@@ -44,7 +53,7 @@ async function apiFetch(path, options = {}) {
     try {
         const res = await fetch(`${API_BASE}${path}`, {
             credentials: 'include',
-            headers: { 'Content-Type': 'application/json', ...options.headers },
+            headers: getAuthHeaders({ 'Content-Type': 'application/json', ...options.headers }),
             ...options,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
@@ -126,6 +135,8 @@ function createWorkgroupCard(wg) {
     const engineerCount = wg.engineers ? wg.engineers.length : 0;
     const engineerText = engineerCount === 0 ? 'No engineers assigned' : `${engineerCount} engineer${engineerCount > 1 ? 's' : ''} assigned`;
 
+    const bugManagementHref = withAuthUrl(`/engineer/bug_management?workgroup_id=${encodeURIComponent(wg.id)}`);
+
     card.innerHTML = `
         <div class="wg-card-top-bar"></div>
         <div class="wg-card-header">
@@ -159,7 +170,7 @@ function createWorkgroupCard(wg) {
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#64748b" stroke-width="1.1"/><path d="M7 6.5v3M7 4.5v.5" stroke="#64748b" stroke-width="1.1" stroke-linecap="round"/></svg>
                 Details
             </button>
-            <a href="/engineer/bug_management?workgroup_id=${encodeURIComponent(wg.id)}" class="wg-view-bugs-btn">
+            <a href="${bugManagementHref}" class="wg-view-bugs-btn">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="2" stroke="#7c3aed" stroke-width="1.1"/><path d="M1 7s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z" stroke="#7c3aed" stroke-width="1.1"/></svg>
                 View Bugs
             </a>
@@ -264,6 +275,14 @@ function init() {
         });
         document.addEventListener('click', () => {
             dom.profileDropdown.classList.add('hidden');
+        });
+    }
+
+    if (dom.btnLogout) {
+        dom.btnLogout.addEventListener('click', async () => {
+            await apiFetch('/api/auth/logout', { method: 'POST' });
+            if (window.RROAuth) window.RROAuth.clearToken();
+            window.location.href = '/';
         });
     }
 

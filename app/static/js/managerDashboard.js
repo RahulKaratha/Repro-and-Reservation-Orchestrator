@@ -32,6 +32,14 @@ let workgroups = [];
 let engineers = [];
 let currentFilter = 'all';
 
+function getAuthHeaders(headers = {}) {
+    return window.RROAuth ? window.RROAuth.getAuthHeaders(headers) : headers;
+}
+
+function withAuthUrl(path) {
+    return window.RROAuth ? window.RROAuth.appendAuthToken(path) : path;
+}
+
 /* =========================================
    DOM References
    ========================================= */
@@ -81,7 +89,7 @@ const dom = {
 async function apiFetch(path, options = {}) {
     try {
         const res = await fetch(`${API_BASE}${path}`, {
-            headers: { 'Content-Type': 'application/json', ...options.headers },
+            headers: getAuthHeaders({ 'Content-Type': 'application/json', ...options.headers }),
             credentials: 'include',
             ...options,
         });
@@ -357,7 +365,7 @@ function attachCardMenuListeners() {
             if (action === 'delete') handleDeleteWorkgroup(id);
             else if (action === 'markdone') handleMarkDone(id);
             else if (action === 'edit') handleEditWorkgroup(id);
-            else if (action === 'view') window.location.href = `/bug_management?workgroup_id=${id}`;
+            else if (action === 'view') window.location.href = withAuthUrl(`/bug_management?workgroup_id=${id}`);
         });
     });
 
@@ -366,7 +374,7 @@ function attachCardMenuListeners() {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const id = parseInt(btn.dataset.id);
-            window.location.href = `/bug_management?workgroup_id=${id}`;
+            window.location.href = withAuthUrl(`/bug_management?workgroup_id=${id}`);
         });
     });
 }
@@ -694,8 +702,8 @@ function initEventListeners() {
     // Logout
     dom.btnLogout.addEventListener('click', async () => {
         await apiFetch('/api/auth/logout', { method: 'POST', credentials: "include"});
-        // In local mock, simply reset currentUser
-         window.location.href = "/";
+        if (window.RROAuth) window.RROAuth.clearToken();
+        window.location.href = "/";
     });
 
     // Close modal

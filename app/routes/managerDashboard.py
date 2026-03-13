@@ -1,9 +1,15 @@
-from flask import Blueprint, session, jsonify, render_template, request, redirect, url_for
+from flask import Blueprint, jsonify, render_template, request, redirect, url_for
 from app.extensions import db
 from app.models.user import User
 from app.models.workgroup import Workgroup
 from app.models.workgroupAssignment import WorkgroupAssignment
-from app.auth_utils import manager_required, login_required
+from app.auth_utils import (
+    get_current_auth_token,
+    get_current_role,
+    get_current_user_id,
+    login_required,
+    manager_required,
+)
 from datetime import datetime
 
 manager = Blueprint("manager", __name__)
@@ -14,15 +20,15 @@ manager = Blueprint("manager", __name__)
 def manager_dashboard():
     #  FIX 5: Also verify the role at the page level so an engineer
     # cannot navigate directly to /manager by typing the URL.
-    if session.get("role") != "Manager":
+    if get_current_role() != "Manager":
         return redirect(url_for("auth.login"))
-    return render_template("managerDashboard.html")
+    return render_template("managerDashboard.html", auth_token=get_current_auth_token())
 
 
 @manager.route("/api/stats", methods=["GET"])
 @manager_required          #  Engineer cannot call this anymore
 def get_stats():
-    manager_id = session["user_id"]
+    manager_id = get_current_user_id()
 
     total = Workgroup.query.filter_by(manager_id=manager_id).count()
     active = Workgroup.query.filter_by(manager_id=manager_id, status="Active").count()
@@ -40,7 +46,7 @@ def get_stats():
 @manager.route("/api/workgroups", methods=["GET"])
 @manager_required
 def get_workgroups():
-    manager_id = session["user_id"]
+    manager_id = get_current_user_id()
     print(f"Fetching workgroups for manager_id: {manager_id}")  # Debug log
     workgroups = Workgroup.query.filter_by(manager_id=manager_id).all()
     print(f"Found {len(workgroups)} workgroups")  # Debug log
@@ -76,7 +82,7 @@ def create_workgroup():
         wg = Workgroup(
             name=data["name"],
             release_version=data["release_version"],
-            manager_id=session["user_id"],
+            manager_id=get_current_user_id(),
             status="Completed" if data.get("is_completed", False) else "Active"
         )
 

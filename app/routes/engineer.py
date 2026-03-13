@@ -1,22 +1,29 @@
-from flask import Blueprint, render_template, session, redirect, url_for, request, jsonify
+from flask import Blueprint, render_template, redirect, url_for, request, jsonify, session
 from app.models.user import User
 from app.models.workgroup import Workgroup
 from app.models.workgroupAssignment import WorkgroupAssignment
-from app.auth_utils import engineer_required
+from app.auth_utils import (
+    engineer_required,
+    get_current_auth_token,
+    get_current_role,
+    get_current_user_id,
+    revoke_tab_auth_session,
+    get_request_auth_token,
+)
 
 engineer = Blueprint("engineer", __name__)
 
 
 @engineer.route("/engineer_dashboard", methods=["GET", "POST"])
 def engineer_dashboard():
-    if "user_id" not in session:
+    engineer_id = get_current_user_id()
+    if not engineer_id:
         return redirect(url_for("auth.login"))
 
     #  FIX 6: Block a manager from accessing the engineer dashboard by URL
-    if session.get("role") != "Engineer":
+    if get_current_role() != "Engineer":
         return redirect(url_for("auth.login"))
 
-    engineer_id = session["user_id"]
     filter_type = request.args.get("filter", "all")
     current_user = User.query.get(engineer_id)
 
@@ -62,14 +69,15 @@ def engineer_dashboard():
         total=len(all_workgroups),
         active=active,
         completed=completed,
-        filter_type=filter_type
+        filter_type=filter_type,
+        auth_token=get_current_auth_token(),
     )
 
 
 @engineer.route("/api/engineer/workgroups", methods=["GET"])
 @engineer_required         #  Manager cannot read engineer's workgroup list
 def get_engineer_workgroups():
-    engineer_id = session["user_id"]
+    engineer_id = get_current_user_id()
     filter_type = request.args.get("filter", "all")
 
     assignments = WorkgroupAssignment.query.filter_by(employee_id=engineer_id).all()
@@ -110,7 +118,7 @@ def get_engineer_workgroups():
 @engineer.route("/api/engineer/stats", methods=["GET"])
 @engineer_required         #  Manager cannot read engineer stats
 def get_engineer_stats():
-    engineer_id = session["user_id"]
+    engineer_id = get_current_user_id()
     assignments = WorkgroupAssignment.query.filter_by(employee_id=engineer_id).all()
 
     total = active = completed = 0
@@ -129,14 +137,15 @@ def get_engineer_stats():
 
 @engineer.route("/engineer/bug_management", methods=["GET"])
 def engineer_bug_management():
-    if "user_id" not in session:
+    if not get_current_user_id():
         return redirect(url_for("auth.login"))
-    if session.get("role") != "Engineer":
+    if get_current_role() != "Engineer":
         return redirect(url_for("auth.login"))
-    return render_template("engineerBugManagement.html")
+    return render_template("engineerBugManagement.html", auth_token=get_current_auth_token())
 
 
 @engineer.route("/engineer_logout")
 def logout():
+    revoke_tab_auth_session(get_request_auth_token())
     session.clear()
     return redirect(url_for("auth.login"))
