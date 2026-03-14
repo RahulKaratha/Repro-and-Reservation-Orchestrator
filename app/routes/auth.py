@@ -99,15 +99,18 @@ def forgot_password():
         email = request.form['email']
         user = User.query.filter_by(email=email).first()
 
-        if user:
-            try:
-                send_reset_email(user)
-            except Exception as e:
-                print(f"EMAIL ERROR: {e}")
-                flash("Unable to send email. Please try again later.", "danger")
-                return render_template("forgot_password.html")
+        if not user:
+            flash("Account doesn't exist. Please check the email address or register.", "danger")
+            return render_template("forgot_password.html")
 
-        flash("If this email exists, a reset link has been sent.", "info")
+        try:
+            send_reset_email(user)
+        except Exception as e:
+            print(f"EMAIL ERROR: {e}")
+            flash("Unable to send email. Please try again later.", "danger")
+            return render_template("forgot_password.html")
+
+        flash("Reset link sent! Please check your inbox (and spam folder) for the password reset email.", "success")
         return redirect(url_for('auth.forgot_password'))
 
     return render_template("forgot_password.html")

@@ -3,6 +3,7 @@ from app.extensions import db
 from app.models.user import User
 from app.models.workgroup import Workgroup
 from app.models.workgroupAssignment import WorkgroupAssignment
+from sqlalchemy.exc import IntegrityError
 from app.auth_utils import (
     get_current_auth_token,
     get_current_role,
@@ -75,13 +76,26 @@ def get_workgroups():
 @manager.route("/api/workgroups", methods=["POST"])
 @manager_required
 def create_workgroup():
-    data = request.json
+    data = request.get_json(silent=True) or {}
     print(f"Creating workgroup: {data}")  # Debug log
+
+    name = (data.get("name") or "").strip()
+    release_version = (data.get("release_version") or "").strip()
+
+    if not name:
+        return jsonify({"error": "Workgroup name is required."}), 400
+    if not release_version:
+        return jsonify({"error": "Release version is required."}), 400
+
+    # Friendly pre-check; DB unique constraint remains the final race-safe guard.
+    existing = Workgroup.query.filter_by(name=name).first()
+    if existing:
+        return jsonify({"error": "Workgroup name already exists. Please choose a unique name."}), 409
 
     try:
         wg = Workgroup(
-            name=data["name"],
-            release_version=data["release_version"],
+            name=name,
+            release_version=release_version,
             manager_id=get_current_user_id(),
             status="Completed" if data.get("is_completed", False) else "Active"
         )
@@ -121,6 +135,10 @@ def create_workgroup():
             "created_at": wg.created_at.isoformat() if wg.created_at else None,
             "engineers": engineers
         })
+    except IntegrityError as e:
+        db.session.rollback()
+        print(f"Integrity error creating workgroup: {str(e)}")  # Debug log
+        return jsonify({"error": "Workgroup name already exists. Please choose a unique name."}), 409
     except Exception as e:
         db.session.rollback()
         print(f"Error creating workgroup: {str(e)}")  # Debug log
@@ -130,13 +148,29 @@ def create_workgroup():
 @manager.route("/api/workgroups/<int:id>", methods=["PATCH"])
 @manager_required          #  Engineer cannot edit workgroups
 def update_workgroup(id):
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     wg = Workgroup.query.get_or_404(id)
 
+    proposed_name = None
     if "name" in data:
-        wg.name = data["name"]
+        proposed_name = (data["name"] or "").strip()
+        if not proposed_name:
+            return jsonify({"error": "Workgroup name is required."}), 400
+
+        existing = Workgroup.query.filter(
+            Workgroup.name == proposed_name,
+            Workgroup.id != id
+        ).first()
+        if existing:
+            return jsonify({"error": "Workgroup name already exists. Please choose a unique name."}), 409
+
+    if proposed_name is not None:
+        wg.name = proposed_name
     if "release_version" in data:
-        wg.release_version = data["release_version"]
+        release_version = (data["release_version"] or "").strip()
+        if not release_version:
+            return jsonify({"error": "Release version is required."}), 400
+        wg.release_version = release_version
     if "is_completed" in data:
         wg.status = "Completed" if data["is_completed"] else "Active"
 
@@ -157,7 +191,12 @@ def update_workgroup(id):
         for eid in add_ids:
             db.session.add(WorkgroupAssignment(workgroup_id=id, employee_id=eid))
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError as e:
+        db.session.rollback()
+        print(f"Integrity error updating workgroup: {str(e)}")  # Debug log
+        return jsonify({"error": "Workgroup name already exists. Please choose a unique name."}), 409
 
     assignments = WorkgroupAssignment.query.filter_by(workgroup_id=id).all()
     engineers = []
