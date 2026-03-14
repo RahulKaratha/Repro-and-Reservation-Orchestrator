@@ -37,6 +37,7 @@ CREATE TABLE Workgroup_Schema (
     Manager_ID INT,
     Created_At DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (Manager_ID) REFERENCES Users(ID) ON DELETE SET NULL,
+    UNIQUE KEY uq_workgroup_name (Name),
     INDEX idx_manager (Manager_ID),
     INDEX idx_status (Status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
