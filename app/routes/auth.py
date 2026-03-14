@@ -2,7 +2,15 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.extensions import db
 from app.models.user import User
-from app.auth_utils import generate_reset_token, verify_reset_token, send_reset_email
+from app.auth_utils import (
+    create_tab_auth_session,
+    generate_reset_token,
+    get_auth_context,
+    get_request_auth_token,
+    revoke_tab_auth_session,
+    verify_reset_token,
+    send_reset_email,
+)
 
 auth = Blueprint('auth', __name__)
 
@@ -26,10 +34,12 @@ def login():
             #  FIX 2: Make the session permanent and bind it tightly
             session.permanent = True
 
+            auth_token = create_tab_auth_session(user)
+
             if user.role == "Engineer":
-                return redirect(url_for('engineer.engineer_dashboard'))
+                return redirect(url_for('engineer.engineer_dashboard', auth_token=auth_token))
             elif user.role == "Manager":
-                return redirect(url_for('manager.manager_dashboard'))
+                return redirect(url_for('manager.manager_dashboard', auth_token=auth_token))
             else:
                 flash(f"Unknown role: {user.role}", "danger")
         else:
@@ -89,15 +99,18 @@ def forgot_password():
         email = request.form['email']
         user = User.query.filter_by(email=email).first()
 
-        if user:
-            try:
-                send_reset_email(user)
-            except Exception as e:
-                print(f"EMAIL ERROR: {e}")
-                flash("Unable to send email. Please try again later.", "danger")
-                return render_template("forgot_password.html")
+        if not user:
+            flash("Account doesn't exist. Please check the email address or register.", "danger")
+            return render_template("forgot_password.html")
 
-        flash("If this email exists, a reset link has been sent.", "info")
+        try:
+            send_reset_email(user)
+        except Exception as e:
+            print(f"EMAIL ERROR: {e}")
+            flash("Unable to send email. Please try again later.", "danger")
+            return render_template("forgot_password.html")
+
+        flash("Reset link sent! Please check your inbox (and spam folder) for the password reset email.", "success")
         return redirect(url_for('auth.forgot_password'))
 
     return render_template("forgot_password.html")
@@ -141,13 +154,11 @@ def get_current_user():
     Previously it lived on the manager blueprint, so engineer dashboards
     calling this endpoint were reading the manager's session context.
     """
-    if "user_id" not in session:
+    context = get_auth_context()
+    if not context:
         return {"error": "Not logged in"}, 401
 
-    user = User.query.get(session["user_id"])
-    if not user:
-        session.clear()
-        return {"error": "User not found"}, 401
+    user = context["user"]
 
     return {
         "id": user.id,
@@ -161,5 +172,6 @@ def get_current_user():
 # ---------------- SHARED: Logout ----------------
 @auth.route("/api/auth/logout", methods=["POST"])
 def logout():
+    revoke_tab_auth_session(get_request_auth_token())
     session.clear()
     return {"message": "Logged out"}
