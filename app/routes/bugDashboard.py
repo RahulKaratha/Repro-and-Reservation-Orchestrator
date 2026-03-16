@@ -361,3 +361,20 @@ def get_bug_analysis(bug_code):
             "summary":         ml.summary or "",
         }
     })
+
+# --------------------------------------------------
+# SYNC BUGS (called on dashboard page refresh)
+# --------------------------------------------------
+@bug.route("/api/bugs/sync", methods=["POST"])
+def sync_bugs():
+    user_id = get_current_user_id()
+    if not user_id:
+        return jsonify({"error": "Not logged in"}), 401
+
+    try:
+        from app.services.bug_sync import fetch_and_sync_bugs
+        fetch_and_sync_bugs()
+        return jsonify({"message": "Sync complete"})
+    except Exception as e:
+        print(f"[BugSync] Manual sync failed: {e}")
+        return jsonify({"error": str(e)}), 500

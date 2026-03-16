@@ -135,6 +135,7 @@ async function loadCurrentUser() {
 }
 
 async function loadBugsData() {
+    await apiFetch('/api/bugs/sync', { method: 'POST' });
     const params    = buildBugQueryParams();
     const qs        = params.toString();
     const apiPath   = qs ? `/api/bugs?${qs}` : '/api/bugs';
