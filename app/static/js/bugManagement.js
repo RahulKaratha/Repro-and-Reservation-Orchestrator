@@ -276,44 +276,160 @@ function generateBugsTableRows(bugs) {
             'P4': 'priority-p4'
         }[bug.priority] || 'priority-p2';
 
+        const testsCount = Array.isArray(bug.tests) ? bug.tests.length : 0;
+        const testsLabel = `${testsCount} ${testsCount === 1 ? 'test' : 'tests'}`;
+
         return `
-        <tr class="bug-row" onmouseenter="this.style.backgroundColor='#f1f5f9'" onmouseleave="this.style.backgroundColor=''">
+        <tr class="bug-row"
+            data-bug-db-id="${escapeHtml(bug.db_id)}"
+            data-bug-code="${escapeHtml(bug.id)}"
+            data-priority="${escapeHtml(bug.priority || 'P2')}"
+            data-engineer-name="${escapeHtml(bug.engineer_name || 'Unassigned')}"
+            data-expanded="false"
+            onclick="toggleBugExpansion(this)"
+            style="cursor: pointer;"
+            onmouseenter="this.style.backgroundColor='#f1f5f9'"
+            onmouseleave="this.style.backgroundColor=''">
             <td><span class="priority-badge ${priorityClass}">${escapeHtml(bug.priority || 'P2')}</span></td>
-            <td class="bug-id-cell">${escapeHtml(bug.id)}</td>
-            <td class="engineer-cell">
-                <div class="engineer-avatar" style="background: ${bug.engineer.color}">${escapeHtml(bug.engineer.initials)}</div>
-                <span class="engineer-name">${escapeHtml(bug.engineer.name)}</span>
-            </td>
-            <td class="summary-cell">${escapeHtml(bug.summary || 'No summary')}</td>
+            <td class="engineer-name">${escapeHtml(bug.id)}</td>
+            <td class="engineer-value">${escapeHtml(bug.engineer_name || 'Unassigned')}</td>
             <td>
-                <div class="tests-cell">
-                    ${generateBadgesHtml(bug.tests, 'test')}
-                </div>
-            </td>
-            <td>
-                <div class="stations-cell">
-                    ${generateBadgesHtml(bug.stations, 'station')}
-                </div>
-            </td>
-            <td class="config-cell">${escapeHtml(bug.config)}</td>
-            <td>
-                <input type="text" class="resource-input" placeholder="Enter group..." value="${escapeHtml(bug.resourceGroup)}" />
-            </td>
-            <td>
-                <div class="action-cell">
-                    <button class="btn-action btn-run">
-                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3L12 8L4 13V3Z" fill="currentColor" stroke="none"/></svg>
-                        Run Now
-                    </button>
-                    <button class="btn-action btn-later">
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="7"/><path d="M8 4V8L11 10"/></svg>
-                        Run Later
-                    </button>
+                <div class="tests-trigger">
+                    <span class="tests-count-badge">${escapeHtml(testsLabel)}</span>
+                    <svg class="expand-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
                 </div>
             </td>
         </tr>
     `;
     }).join('');
+}
+
+function getPriorityClass(priority) {
+    return {
+        'P0': 'priority-p0',
+        'P1': 'priority-p1',
+        'P2': 'priority-p2',
+        'P3': 'priority-p3',
+        'P4': 'priority-p4'
+    }[priority] || 'priority-p2';
+}
+
+function getNodeConfigLabel(nodesValue) {
+    if (nodesValue === null || nodesValue === undefined || nodesValue === '') {
+        return '—';
+    }
+    return `N${escapeHtml(nodesValue)}`;
+}
+
+function buildSubRowsHtml(row, testsPayload) {
+    const bugCode = row.dataset.bugCode;
+    const engineerName = row.dataset.engineerName || 'Unassigned';
+    const priority = row.dataset.priority || 'P2';
+    const priorityClass = getPriorityClass(priority);
+    const tests = testsPayload?.tests || [];
+
+    if (!tests.length) {
+        return `
+            <tr class="sub-row" data-expansion-for="${escapeHtml(bugCode)}">
+                <td><span class="priority-badge ${priorityClass}">${escapeHtml(priority)}</span></td>
+                <td>${escapeHtml(bugCode)}</td>
+                <td>${escapeHtml(engineerName)}</td>
+                <td>—</td>
+            </tr>
+        `;
+    }
+
+    return tests.map(test => {
+        const testName = test?.test_name || '—';
+        const stationName = test?.station_name || '—';
+        const configuration = getNodeConfigLabel(test?.number_of_nodes);
+
+        return `
+            <tr class="sub-row" data-expansion-for="${escapeHtml(bugCode)}">
+                <td><span class="priority-badge ${priorityClass}">${escapeHtml(priority)}</span></td>
+                <td>${escapeHtml(bugCode)}</td>
+                <td>${escapeHtml(engineerName)}</td>
+                <td>
+                    <div class="sub-row-test-grid">
+                        <span class="sub-row-test-item"><strong>Test Name:</strong> ${escapeHtml(testName)}</span>
+                        <span class="sub-row-test-item"><strong>Station Name:</strong> ${escapeHtml(stationName)}</span>
+                        <span class="sub-row-test-item"><strong>Configuration:</strong> ${configuration}</span>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function buildMlAnalysisRowHtml(row, analysisPayload) {
+    const bugCode = row.dataset.bugCode;
+    const analysis = analysisPayload?.analysis || {};
+    const pending = 'Pending analysis...';
+
+    return `
+        <tr class="ml-analysis-row" data-expansion-for="${escapeHtml(bugCode)}">
+            <td colspan="4">
+                <div class="ml-analysis-inner">
+                    <div class="ml-analysis-title">ML's Analysis</div>
+                    <div class="ml-analysis-item">
+                        <span class="ml-analysis-label">1. Repro Actions:</span>
+                        <span class="ml-analysis-value">${escapeHtml(analysis.repro_actions || pending)}</span>
+                    </div>
+                    <div class="ml-analysis-item">
+                        <span class="ml-analysis-label">2. Config Changes:</span>
+                        <span class="ml-analysis-value">${escapeHtml(analysis.config_changes || pending)}</span>
+                    </div>
+                    <div class="ml-analysis-item">
+                        <span class="ml-analysis-label">3. Repro Readiness:</span>
+                        <span class="ml-analysis-value">${escapeHtml(analysis.repro_readiness || pending)}</span>
+                    </div>
+                    <div class="ml-analysis-item">
+                        <span class="ml-analysis-label">Summary:</span>
+                        <span class="ml-analysis-value">${escapeHtml(analysis.summary || pending)}</span>
+                    </div>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+async function toggleBugExpansion(row) {
+    const bugCode = row.dataset.bugCode;
+    const testsTrigger = row.querySelector('.tests-trigger');
+    const chevron = row.querySelector('.expand-chevron');
+
+    if (row.dataset.expanded === 'true') {
+        const existingRows = Array.from(row.parentElement.querySelectorAll('tr[data-expansion-for]'));
+        existingRows
+            .filter(expansionRow => expansionRow.dataset.expansionFor === bugCode)
+            .forEach(expansionRow => expansionRow.remove());
+
+        row.dataset.expanded = 'false';
+        if (testsTrigger) testsTrigger.classList.remove('open');
+        if (chevron) chevron.classList.remove('open');
+        return;
+    }
+
+    row.dataset.expanded = 'true';
+    if (testsTrigger) testsTrigger.classList.add('open');
+    if (chevron) chevron.classList.add('open');
+
+    const dbId = row.dataset.bugDbId;
+
+    const [testsPayload, analysisPayload] = await Promise.all([
+        apiFetch('/api/bugs/' + dbId + '/tests'),
+        apiFetch('/api/bugs/' + dbId + '/analysis')
+    ]);
+
+    if (row.dataset.expanded !== 'true') {
+        return;
+    }
+
+    const subRowsHtml = buildSubRowsHtml(row, testsPayload);
+    const analysisRowHtml = buildMlAnalysisRowHtml(row, analysisPayload);
+    row.insertAdjacentHTML('afterend', subRowsHtml + analysisRowHtml);
 }
 
 function renderBugs(reproBugs, testBugs) {
@@ -409,7 +525,7 @@ function filterBugsBySelection(type, value) {
             case 'Bug ID':
                 return bug.id.toLowerCase() === valueLower;
             case 'Engineer':
-                return bug.engineer.name.toLowerCase() === valueLower;
+                return (bug.engineer_name || '').toLowerCase() === valueLower;
             case 'Test':
                 return bug.tests.some(t => t.toLowerCase() === valueLower);
             case 'Station':
