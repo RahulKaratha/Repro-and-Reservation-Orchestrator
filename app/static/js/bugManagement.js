@@ -275,6 +275,7 @@ function generateBugsTableRows(bugs) {
             'P3': 'priority-p3',
             'P4': 'priority-p4'
         }[bug.priority] || 'priority-p2';
+        const bugNameFull = bug.bug_name || '—';
 
         const testsCount = Array.isArray(bug.tests) ? bug.tests.length : 0;
         const testsLabel = `${testsCount} ${testsCount === 1 ? 'test' : 'tests'}`;
@@ -283,6 +284,7 @@ function generateBugsTableRows(bugs) {
         <tr class="bug-row"
             data-bug-db-id="${escapeHtml(bug.db_id)}"
             data-bug-code="${escapeHtml(bug.id)}"
+            data-bug-name="${escapeHtml(bug.bug_name || '—')}"
             data-priority="${escapeHtml(bug.priority || 'P2')}"
             data-engineer-name="${escapeHtml(bug.engineer_name || 'Unassigned')}"
             data-expanded="false"
@@ -291,8 +293,11 @@ function generateBugsTableRows(bugs) {
             onmouseenter="this.style.backgroundColor='#f1f5f9'"
             onmouseleave="this.style.backgroundColor=''">
             <td><span class="priority-badge ${priorityClass}">${escapeHtml(bug.priority || 'P2')}</span></td>
-            <td class="engineer-name">${escapeHtml(bug.id)}</td>
-            <td class="engineer-value">${escapeHtml(bug.engineer_name || 'Unassigned')}</td>
+            <td>
+                <div class="bug-id-main">${escapeHtml(bug.id)}</div>
+            </td>
+            <td class="bug-name-cell" title="${escapeHtml(bugNameFull)}">${escapeHtml(bugNameFull)}</td>
+            <td class="engineer-cell">${escapeHtml(bug.engineer_name || 'Unassigned')}</td>
             <td>
                 <div class="tests-trigger">
                     <span class="tests-count-badge">${escapeHtml(testsLabel)}</span>
@@ -323,73 +328,78 @@ function getNodeConfigLabel(nodesValue) {
     return `N${escapeHtml(nodesValue)}`;
 }
 
-function buildSubRowsHtml(row, testsPayload) {
-    const bugCode = row.dataset.bugCode;
-    const engineerName = row.dataset.engineerName || 'Unassigned';
-    const priority = row.dataset.priority || 'P2';
-    const priorityClass = getPriorityClass(priority);
+function buildTestsTableHtml(testsPayload) {
     const tests = testsPayload?.tests || [];
-
-    if (!tests.length) {
-        return `
-            <tr class="sub-row" data-expansion-for="${escapeHtml(bugCode)}">
-                <td><span class="priority-badge ${priorityClass}">${escapeHtml(priority)}</span></td>
-                <td>${escapeHtml(bugCode)}</td>
-                <td>${escapeHtml(engineerName)}</td>
+    const rowsHtml = tests.length
+        ? tests.map(t => `
+            <tr>
+                <td>${escapeHtml(t?.test_name || '—')}</td>
+                <td>${escapeHtml(t?.station_name || '—')}</td>
+                <td>${escapeHtml(t?.build_version || '—')}</td>
+                <td>${escapeHtml(t?.configuration || '—')}</td>
+            </tr>
+        `).join('')
+        : `
+            <tr>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
                 <td>—</td>
             </tr>
         `;
-    }
 
-    return tests.map(test => {
-        const testName = test?.test_name || '—';
-        const stationName = test?.station_name || '—';
-        const configuration = getNodeConfigLabel(test?.number_of_nodes);
-
-        return `
-            <tr class="sub-row" data-expansion-for="${escapeHtml(bugCode)}">
-                <td><span class="priority-badge ${priorityClass}">${escapeHtml(priority)}</span></td>
-                <td>${escapeHtml(bugCode)}</td>
-                <td>${escapeHtml(engineerName)}</td>
-                <td>
-                    <div class="sub-row-test-grid">
-                        <span class="sub-row-test-item"><strong>Test Name:</strong> ${escapeHtml(testName)}</span>
-                        <span class="sub-row-test-item"><strong>Station Name:</strong> ${escapeHtml(stationName)}</span>
-                        <span class="sub-row-test-item"><strong>Configuration:</strong> ${configuration}</span>
-                    </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
+    return `
+        <table class="sub-tests-table">
+            <thead>
+                <tr>
+                    <th>Test</th>
+                    <th>Station Name</th>
+                    <th>Build</th>
+                    <th>Configuration</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rowsHtml}
+            </tbody>
+        </table>
+    `;
 }
 
-function buildMlAnalysisRowHtml(row, analysisPayload) {
-    const bugCode = row.dataset.bugCode;
+function buildMlAnalysisSectionHtml(analysisPayload) {
     const analysis = analysisPayload?.analysis || {};
     const pending = 'Pending analysis...';
 
     return `
-        <tr class="ml-analysis-row" data-expansion-for="${escapeHtml(bugCode)}">
-            <td colspan="4">
-                <div class="ml-analysis-inner">
-                    <div class="ml-analysis-title">ML's Analysis</div>
-                    <div class="ml-analysis-item">
-                        <span class="ml-analysis-label">1. Repro Actions:</span>
-                        <span class="ml-analysis-value">${escapeHtml(analysis.repro_actions || pending)}</span>
-                    </div>
-                    <div class="ml-analysis-item">
-                        <span class="ml-analysis-label">2. Config Changes:</span>
-                        <span class="ml-analysis-value">${escapeHtml(analysis.config_changes || pending)}</span>
-                    </div>
-                    <div class="ml-analysis-item">
-                        <span class="ml-analysis-label">3. Repro Readiness:</span>
-                        <span class="ml-analysis-value">${escapeHtml(analysis.repro_readiness || pending)}</span>
-                    </div>
-                    <div class="ml-analysis-item">
-                        <span class="ml-analysis-label">Summary:</span>
-                        <span class="ml-analysis-value">${escapeHtml(analysis.summary || pending)}</span>
-                    </div>
-                </div>
+        <div class="ml-analysis-inner">
+            <div class="ml-analysis-title">ML's Analysis</div>
+            <ol class="ml-analysis-list">
+                <li class="ml-analysis-item">
+                    <span class="ml-analysis-label">Repro Actions:</span>
+                    <span class="ml-analysis-value">${escapeHtml(analysis.repro_actions || pending)}</span>
+                </li>
+                <li class="ml-analysis-item">
+                    <span class="ml-analysis-label">Config Changes:</span>
+                    <span class="ml-analysis-value">${escapeHtml(analysis.config_changes || pending)}</span>
+                </li>
+                <li class="ml-analysis-item">
+                    <span class="ml-analysis-label">Repro Readiness:</span>
+                    <span class="ml-analysis-value">${escapeHtml(analysis.repro_readiness || pending)}</span>
+                </li>
+                <li class="ml-analysis-item">
+                    <span class="ml-analysis-label">Summary:</span>
+                    <span class="ml-analysis-value">${escapeHtml(analysis.summary || pending)}</span>
+                </li>
+            </ol>
+        </div>
+    `;
+}
+
+function generateExpansionHtml(bugCode, testsPayload, analysisPayload) {
+    return `
+        <tr class="expansion-row" data-expansion-for="${escapeHtml(bugCode)}">
+            <td colspan="5">
+                ${buildTestsTableHtml(testsPayload)}
+                ${buildMlAnalysisSectionHtml(analysisPayload)}
             </td>
         </tr>
     `;
@@ -427,9 +437,8 @@ async function toggleBugExpansion(row) {
         return;
     }
 
-    const subRowsHtml = buildSubRowsHtml(row, testsPayload);
-    const analysisRowHtml = buildMlAnalysisRowHtml(row, analysisPayload);
-    row.insertAdjacentHTML('afterend', subRowsHtml + analysisRowHtml);
+    const expansionHtml = generateExpansionHtml(bugCode, testsPayload, analysisPayload);
+    row.insertAdjacentHTML('afterend', expansionHtml);
 }
 
 function renderBugs(reproBugs, testBugs) {

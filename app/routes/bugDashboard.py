@@ -115,6 +115,7 @@ def get_bugs():
         data = {
             "db_id": b.id,
             "id": b.bug_code,
+            "bug_name": b.bug_name,
             "engineer_name": (
                 f"{b.engineer.first_name} {b.engineer.last_name or ''}".strip()
                 if b.engineer else "Unassigned"
@@ -366,6 +367,7 @@ def get_bug_tests(bug_id):
 
     return jsonify({
         "bug_code": bug_record.bug_code,
+        "bug_name": bug_record.bug_name,
         "tests": [
             {
                 "id": bug_test.id,
@@ -377,6 +379,7 @@ def get_bug_tests(bug_id):
                 "controller_types": bug_test.controller_types,
                 "failure_type": bug_test.failure_type,
                 "build_version": bug_test.build_version,
+                "configuration": bug_test.configuration,
                 "execution_start": bug_test.execution_start.isoformat() if bug_test.execution_start else None,
                 "execution_end": bug_test.execution_end.isoformat() if bug_test.execution_end else None,
                 "nfs_path": bug_test.nfs_path,

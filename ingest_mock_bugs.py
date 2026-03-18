@@ -70,7 +70,7 @@ def parse_int(raw_value):
         return None
 
 
-def parse_test_metadata(comment_text):
+def parse_comment_metadata(comment_text):
     parsed = {}
 
     if not comment_text:
@@ -86,7 +86,30 @@ def parse_test_metadata(comment_text):
         value = value.strip()
         parsed[key] = value
 
-    return parsed
+    raw_test_name = parsed.get("Test Name")
+    test_name = None
+    if raw_test_name:
+        test_name = raw_test_name.replace("\\", "/").rsplit("/", 1)[-1]
+
+    test_ring_name = parsed.get("Test Ring Name")
+    number_of_nodes = parse_int(parsed.get("Number Of Nodes"))
+
+    return {
+        "test_name": test_name,
+        "test_plan_name": parsed.get("Test Plan Name"),
+        "test_ring_name": test_ring_name,
+        "execution_start": parse_execution_datetime(parsed.get("Execution Start")),
+        "execution_end": parse_execution_datetime(parsed.get("Execution End")),
+        "controller_types": parsed.get("Controller Types"),
+        "number_of_nodes": number_of_nodes,
+        "failure_type": parsed.get("Failure Type"),
+        "build_version": parsed.get("Build Version"),
+        "nfs_path": parsed.get("NFS Path"),
+        "odin_link": parsed.get("Odin Link"),
+        "signature": parsed.get("Signature"),
+        "station_name": test_ring_name,
+        "configuration": f"N{number_of_nodes}" if number_of_nodes else None,
+    }
 
 
 def map_bug_status(source_status):
@@ -119,12 +142,12 @@ def get_metadata_comment(comments):
 
 
 def ingest():
-    with open(MOCK_BUGS_FILE, "r", encoding="utf-8") as handle:
+    with open(MOCK_BUGS_FILE, "r", encoding="utf-8-sig") as handle:
         bug_rows = json.load(handle)
 
     inserted_bugs = 0
     skipped_bugs = 0
-    created_tests = 0
+    tests_created = 0
     created_comments = 0
     created_ml = 0
 
@@ -138,10 +161,6 @@ def ingest():
                     continue
 
                 existing = Bug.query.filter_by(bug_code=bug_code).first()
-                if existing:
-                    print(f"Skipping bug {bug_code} -- already exists")
-                    skipped_bugs += 1
-                    continue
 
                 source_status = row.get("Status")
                 assignee_email = (row.get("Assignee") or "").strip()
@@ -150,77 +169,102 @@ def ingest():
                 if assignee_email:
                     engineer = User.query.filter(db.func.lower(User.email) == assignee_email.lower()).first()
 
-                bug = Bug(
-                    bug_code=bug_code,
-                    priority=(row.get("Priority") or "P2").strip(),
-                    status=map_bug_status(source_status),
-                    engineer_id=engineer.id if engineer else None,
-                    bug_type=map_bug_type(source_status),
-                    resource_group=(row.get("Build") or "").strip() or None,
-                    summary=(row.get("Component") or "").strip() or None,
-                )
-                db.session.add(bug)
-                db.session.flush()
+                if existing:
+                    print(f"Skipping bug {bug_code} -- already exists")
+                    skipped_bugs += 1
+                    bug = existing
+                else:
+                    bug = Bug(
+                        bug_code=bug_code,
+                        bug_name=row.get("Bug Name", None),
+                        priority=(row.get("Priority") or "P2").strip(),
+                        status=map_bug_status(source_status),
+                        engineer_id=engineer.id if engineer else None,
+                        bug_type=map_bug_type(source_status),
+                        resource_group=(row.get("Build") or "").strip() or None,
+                        summary=(row.get("Component") or "").strip() or None,
+                    )
+                    db.session.add(bug)
+                    db.session.flush()
+                    inserted_bugs += 1
 
                 comments = row.get("Comments") or []
                 metadata_comment = get_metadata_comment(comments)
-                metadata = parse_test_metadata(metadata_comment.get("text", ""))
+                comment_zero_text = metadata_comment.get("text", "") if isinstance(metadata_comment, dict) else ""
 
-                raw_test_name = metadata.get("Test Name")
-                test_name = None
-                if raw_test_name:
-                    test_name = raw_test_name.replace("\\", "/").rsplit("/", 1)[-1]
+                # Always refresh tests even if bug already existed.
+                BugTest.query.filter_by(bug_id=bug.id).delete()
 
-                test_ring_name = metadata.get("Test Ring Name")
+                tests_array = row.get("Tests", [])
+                if not tests_array:
+                    parsed_fallback = parse_comment_metadata(comment_zero_text)
+                    tests_array = [{
+                        "test_name": parsed_fallback.get("test_name"),
+                        "station_name": parsed_fallback.get("station_name"),
+                        "build_version": parsed_fallback.get("build_version"),
+                        "configuration": parsed_fallback.get("configuration"),
+                    }]
 
-                bug_test = BugTest(
-                    bug_id=bug.id,
-                    test_name=test_name,
-                    test_plan_name=metadata.get("Test Plan Name"),
-                    test_ring_name=test_ring_name,
-                    execution_start=parse_execution_datetime(metadata.get("Execution Start")),
-                    execution_end=parse_execution_datetime(metadata.get("Execution End")),
-                    controller_types=metadata.get("Controller Types"),
-                    number_of_nodes=parse_int(metadata.get("Number Of Nodes")),
-                    failure_type=metadata.get("Failure Type"),
-                    build_version=metadata.get("Build Version"),
-                    nfs_path=metadata.get("NFS Path"),
-                    odin_link=metadata.get("Odin Link"),
-                    signature=metadata.get("Signature"),
-                    station_name=test_ring_name,
-                )
-                db.session.add(bug_test)
-                created_tests += 1
+                for idx, test_entry in enumerate(tests_array):
+                    test_entry = test_entry if isinstance(test_entry, dict) else {}
+                    if idx == 0:
+                        # First test includes full parsed metadata from comment[0].text.
+                        parsed = parse_comment_metadata(comment_zero_text)
+                    else:
+                        parsed = {}
 
-                for comment in comments:
-                    comment_obj = BugComment(
+                    bug_test = BugTest(
                         bug_id=bug.id,
-                        comment_bugzilla_id=parse_int(comment.get("id")) if isinstance(comment, dict) else None,
-                        creator=(comment.get("creator") if isinstance(comment, dict) else None),
-                        creation_time=parse_iso_datetime(comment.get("creation_time")) if isinstance(comment, dict) else None,
-                        text=(comment.get("text") if isinstance(comment, dict) else None),
+                        test_name=test_entry.get("test_name"),
+                        station_name=test_entry.get("station_name"),
+                        build_version=test_entry.get("build_version"),
+                        configuration=test_entry.get("configuration"),
+                        test_plan_name=parsed.get("test_plan_name"),
+                        test_ring_name=parsed.get("test_ring_name"),
+                        execution_start=parsed.get("execution_start"),
+                        execution_end=parsed.get("execution_end"),
+                        controller_types=parsed.get("controller_types"),
+                        number_of_nodes=parsed.get("number_of_nodes"),
+                        failure_type=parsed.get("failure_type"),
+                        nfs_path=parsed.get("nfs_path"),
+                        odin_link=parsed.get("odin_link"),
+                        signature=parsed.get("signature"),
                     )
-                    db.session.add(comment_obj)
-                    created_comments += 1
+                    db.session.add(bug_test)
+                    tests_created += 1
 
-                ml_analysis = MLAnalysis(
-                    bug_id=bug.id,
-                    repro_actions=None,
-                    config_changes=None,
-                    repro_readiness=None,
-                    summary=None,
-                )
-                db.session.add(ml_analysis)
-                created_ml += 1
+                if existing:
+                    bug.bug_name = row.get("Bug Name", None)
+                    db.session.add(bug)
 
-                inserted_bugs += 1
+                if not existing:
+                    for comment in comments:
+                        comment_obj = BugComment(
+                            bug_id=bug.id,
+                            comment_bugzilla_id=parse_int(comment.get("id")) if isinstance(comment, dict) else None,
+                            creator=(comment.get("creator") if isinstance(comment, dict) else None),
+                            creation_time=parse_iso_datetime(comment.get("creation_time")) if isinstance(comment, dict) else None,
+                            text=(comment.get("text") if isinstance(comment, dict) else None),
+                        )
+                        db.session.add(comment_obj)
+                        created_comments += 1
+
+                    ml_analysis = MLAnalysis(
+                        bug_id=bug.id,
+                        repro_actions=None,
+                        config_changes=None,
+                        repro_readiness=None,
+                        summary=None,
+                    )
+                    db.session.add(ml_analysis)
+                    created_ml += 1
 
             db.session.commit()
 
             print("Ingest complete.")
             print(f"  Bugs inserted: {inserted_bugs}")
             print(f"  Bugs skipped:  {skipped_bugs}")
-            print(f"  Tests created: {created_tests}")
+            print(f"  Tests created: {tests_created}")
             print(f"  Comments created: {created_comments}")
             print(f"  ML Analysis placeholders created: {created_ml}")
         except Exception as exc:
