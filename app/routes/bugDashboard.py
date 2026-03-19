@@ -1,11 +1,14 @@
-from flask import Blueprint, render_template, session, jsonify, request, redirect, url_for
+from flask import Blueprint, render_template, jsonify, request, redirect, url_for
 from app.extensions import db
 from app.models.bug import Bug
+from app.models.bug_comments import BugComment
+from app.models.ml_analysis import MLAnalysis
 from app.models.bug_tests import BugTest
 from app.models.bug_stations import BugStation
 from app.models.user import User
 from app.models.workgroup import Workgroup
 from app.models.workgroupAssignment import WorkgroupAssignment
+from app.auth_utils import get_current_auth_token, get_current_role, get_current_user, get_current_user_id
 from sqlalchemy import select, or_
 
 bug = Blueprint("bugDashboard", __name__)
@@ -16,8 +19,10 @@ bug = Blueprint("bugDashboard", __name__)
 # --------------------------------------------------
 @bug.route("/bug_management")
 def bug_management():
+    current_user_id = get_current_user_id()
+    current_role = get_current_role()
 
-    if "user_id" not in session:
+    if not current_user_id:
         return redirect(url_for("auth.login"))
 
     workgroup_id = request.args.get('workgroup_id', type=int)
@@ -29,30 +34,10 @@ def bug_management():
             return redirect(url_for("manager.manager_dashboard"))
         
         # Authorization: Only the manager who owns this workgroup can view it
-        if session.get('role') == 'Manager' and workgroup.manager_id != session['user_id']:
+        if current_role == 'Manager' and workgroup.manager_id != current_user_id:
             return redirect(url_for("manager.manager_dashboard"))
 
-    return render_template("bugManagement.html", workgroup=workgroup)
-
-
-# --------------------------------------------------
-# GET CURRENT USER
-# --------------------------------------------------
-@bug.route("/api/auth/me", methods=["GET"])
-def get_current_user():
-
-    if "user_id" not in session:
-        return jsonify({"error": "Not logged in"}), 401
-
-    user = User.query.get(session["user_id"])
-
-    return jsonify({
-        "id": user.id,
-        "name": user.first_name,
-        "fullName": user.full_name,
-        "email": user.email,
-        "role": user.role
-    })
+    return render_template("bugManagement.html", workgroup=workgroup, auth_token=get_current_auth_token())
 
 # --------------------------------------------------
 # GET ALL BUGS
@@ -60,12 +45,14 @@ def get_current_user():
 @bug.route("/api/bugs", methods=["GET"])
 def get_bugs():
 
-    if "user_id" not in session:
+    user_id = get_current_user_id()
+    role = get_current_role()
+
+    if not user_id:
         return jsonify({"error": "Not logged in"}), 401
 
-    user_id = session["user_id"]
-    role = session.get("role")
     workgroup_id = request.args.get('workgroup_id', type=int)
+    my_only = request.args.get('my_only', 'false').lower() == 'true'
 
     # Authorization check for workgroup access
     if workgroup_id:
@@ -90,7 +77,11 @@ def get_bugs():
             # No engineers assigned to this workgroup
             return jsonify({"repro": [], "test": []})
         
-        query = query.filter(Bug.engineer_id.in_(engineer_ids))
+        query = query.filter(or_(Bug.engineer_id.in_(engineer_ids), Bug.engineer_id.is_(None)))
+
+        # Engineers can narrow the workgroup view to only their assigned bugs.
+        if role == "Engineer" and my_only:
+            query = query.filter(Bug.engineer_id == user_id)
     elif role == "Manager":
         # Only include bugs whose engineer belongs to a workgroup managed by this manager
         engineer_ids_subq = (
@@ -105,14 +96,14 @@ def get_bugs():
             Workgroup,
             Workgroup.id == WorkgroupAssignment.workgroup_id
         ).where(
-            Workgroup.manager_id == session["user_id"]
+            Workgroup.manager_id == user_id
         )
 
-        query = query.filter(Bug.engineer_id.in_(engineer_ids))
+        query = query.filter(or_(Bug.engineer_id.in_(engineer_ids), Bug.engineer_id.is_(None)))
         
     elif role == "Engineer":
         # Engineers only see their own bugs
-        query = query.filter(Bug.engineer_id == user_id)
+        query = query.filter(or_(Bug.engineer_id == user_id, Bug.engineer_id.is_(None)))
 
     bugs = query.all()
 
@@ -122,7 +113,13 @@ def get_bugs():
     for b in bugs:
 
         data = {
+            "db_id": b.id,
             "id": b.bug_code,
+            "bug_name": b.bug_name,
+            "engineer_name": (
+                f"{b.engineer.first_name} {b.engineer.last_name or ''}".strip()
+                if b.engineer else "Unassigned"
+            ),
             "priority": b.priority,
             "engineer": {
                 "name": b.engineer.full_name if b.engineer else "Unassigned",
@@ -188,12 +185,14 @@ def schedule_bug(bug_code):
 @bug.route("/api/bugs/stats", methods=["GET"])
 def bug_stats():
 
-    if "user_id" not in session:
+    user_id = get_current_user_id()
+    role = get_current_role()
+
+    if not user_id:
         return jsonify({"error": "Not logged in"}), 401
 
-    user_id = session["user_id"]
-    role = session.get("role")
     workgroup_id = request.args.get('workgroup_id', type=int)
+    my_only = request.args.get('my_only', 'false').lower() == 'true'
 
     # Authorization check for workgroup access
     if workgroup_id:
@@ -222,7 +221,10 @@ def bug_stats():
                 "pendingActions": 0
             })
         
-        query = query.filter(Bug.engineer_id.in_(engineer_ids))
+        query = query.filter(or_(Bug.engineer_id.in_(engineer_ids), Bug.engineer_id.is_(None)))
+
+        if role == "Engineer" and my_only:
+            query = query.filter(Bug.engineer_id == user_id)
     elif role == "Manager":
        engineer_ids_subq = (
             db.session.query(db.func.distinct(WorkgroupAssignment.employee_id))
@@ -230,10 +232,10 @@ def bug_stats():
             .filter(Workgroup.manager_id == user_id)
             .subquery()
         )
-       query = query.filter(Bug.engineer_id.in_(engineer_ids_subq))
+       query = query.filter(or_(Bug.engineer_id.in_(engineer_ids_subq), Bug.engineer_id.is_(None)))
 
     elif role == "Engineer":
-        query = query.filter(Bug.engineer_id == user_id)
+        query = query.filter(or_(Bug.engineer_id == user_id, Bug.engineer_id.is_(None)))
 
     total = query.count()
     repro = query.filter_by(bug_type="repro").count()
@@ -254,16 +256,18 @@ def bug_stats():
 @bug.route("/api/bugs/search", methods=["GET"])
 def search_bugs():
 
-    if "user_id" not in session:
+    user_id = get_current_user_id()
+    role = get_current_role()
+
+    if not user_id:
         return jsonify({"error": "Not logged in"}), 401
 
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify([])
 
-    user_id = session["user_id"]
-    role = session.get("role")
     workgroup_id = request.args.get("workgroup_id", type=int)
+    my_only = request.args.get('my_only', 'false').lower() == 'true'
     pattern = f"%{q}%"
     MAX_SUGGESTIONS = 7
 
@@ -278,6 +282,9 @@ def search_bugs():
         if not engineer_ids:
             return jsonify([])
         base_query = base_query.filter(Bug.engineer_id.in_(engineer_ids))
+
+        if role == "Engineer" and my_only:
+            base_query = base_query.filter(Bug.engineer_id == user_id)
     elif role == "Manager":
         engineer_ids = select(WorkgroupAssignment.employee_id).join(
             Workgroup, Workgroup.id == WorkgroupAssignment.workgroup_id
@@ -314,7 +321,7 @@ def search_bugs():
                 db.func.concat(User.first_name, ' ', User.last_name).ilike(pattern)
             )
         ).limit(MAX_SUGGESTIONS).all()
-        for b in engineer_bugs:  
+        for b in engineer_bugs:
             if b.engineer:
                 add_suggestion("Engineer", b.engineer.full_name, b.bug_code)
 
@@ -323,7 +330,7 @@ def search_bugs():
         test_bugs = base_query.join(BugTest, Bug.id == BugTest.bug_id).filter(
             BugTest.test_name.ilike(pattern)
         ).limit(MAX_SUGGESTIONS).all()
-        for b in test_bugs:  
+        for b in test_bugs:
             for t in b.tests:
                 if q.lower() in t.test_name.lower():
                     add_suggestion("Test", t.test_name, b.bug_code)
@@ -333,7 +340,7 @@ def search_bugs():
         station_bugs = base_query.join(BugStation, Bug.id == BugStation.bug_id).filter(
             BugStation.station_name.ilike(pattern)
         ).limit(MAX_SUGGESTIONS).all()
-        for b in station_bugs:  
+        for b in station_bugs:
             for s in b.stations:
                 if q.lower() in s.station_name.lower():
                     add_suggestion("Station", s.station_name, b.bug_code)
@@ -342,13 +349,105 @@ def search_bugs():
 
 
 # --------------------------------------------------
-# LOGOUT
+# GET BUG TEST METADATA
 # --------------------------------------------------
-@bug.route("/api/auth/logout", methods=["POST"])
-def logout():
+@bug.route("/api/bugs/<int:bug_id>/tests", methods=["GET"])
+def get_bug_tests(bug_id):
 
-    session.clear()
+    user_id = get_current_user_id()
+
+    if not user_id:
+        return jsonify({"error": "Not logged in"}), 401
+
+    bug_record = Bug.query.get(bug_id)
+    if not bug_record:
+        return jsonify({"error": "Bug not found"}), 404
+
+    bug_tests = BugTest.query.filter_by(bug_id=bug_id).all()
 
     return jsonify({
-        "message": "Logged out successfully"
+        "bug_code": bug_record.bug_code,
+        "bug_name": bug_record.bug_name,
+        "tests": [
+            {
+                "id": bug_test.id,
+                "test_name": bug_test.test_name,
+                "test_plan_name": bug_test.test_plan_name,
+                "test_ring_name": bug_test.test_ring_name,
+                "station_name": bug_test.station_name,
+                "number_of_nodes": bug_test.number_of_nodes,
+                "controller_types": bug_test.controller_types,
+                "failure_type": bug_test.failure_type,
+                "build_version": bug_test.build_version,
+                "configuration": bug_test.configuration,
+                "execution_start": bug_test.execution_start.isoformat() if bug_test.execution_start else None,
+                "execution_end": bug_test.execution_end.isoformat() if bug_test.execution_end else None,
+                "nfs_path": bug_test.nfs_path,
+                "odin_link": bug_test.odin_link,
+                "signature": bug_test.signature,
+            }
+            for bug_test in bug_tests
+        ]
     })
+
+
+# --------------------------------------------------
+# GET BUG ML ANALYSIS
+# --------------------------------------------------
+@bug.route("/api/bugs/<int:bug_id>/analysis", methods=["GET"])
+def get_bug_analysis(bug_id):
+
+    user_id = get_current_user_id()
+
+    if not user_id:
+        return jsonify({"error": "Not logged in"}), 401
+
+    bug_record = Bug.query.get(bug_id)
+    if not bug_record:
+        return jsonify({"error": "Bug not found"}), 404
+
+    analysis = MLAnalysis.query.filter_by(bug_id=bug_id).first()
+
+    return jsonify({
+        "bug_code": bug_record.bug_code,
+        "analysis": {
+            "repro_actions": analysis.repro_actions,
+            "config_changes": analysis.config_changes,
+            "repro_readiness": analysis.repro_readiness,
+            "summary": analysis.summary,
+            "generated_at": analysis.generated_at.isoformat() if analysis.generated_at else None,
+        } if analysis else None
+    })
+
+
+# --------------------------------------------------
+# GET BUG COMMENTS
+# --------------------------------------------------
+@bug.route("/api/bugs/<int:bug_id>/comments", methods=["GET"])
+def get_bug_comments(bug_id):
+
+    user_id = get_current_user_id()
+
+    if not user_id:
+        return jsonify({"error": "Not logged in"}), 401
+
+    bug_record = Bug.query.get(bug_id)
+    if not bug_record:
+        return jsonify({"error": "Bug not found"}), 404
+
+    comments = BugComment.query.filter_by(bug_id=bug_id).order_by(BugComment.comment_bugzilla_id.asc()).all()
+
+    return jsonify({
+        "bug_code": bug_record.bug_code,
+        "comments": [
+            {
+                "id": comment.id,
+                "comment_bugzilla_id": comment.comment_bugzilla_id,
+                "creator": comment.creator,
+                "creation_time": comment.creation_time.isoformat() if comment.creation_time else None,
+                "text": comment.text,
+            }
+            for comment in comments
+        ]
+    })
+

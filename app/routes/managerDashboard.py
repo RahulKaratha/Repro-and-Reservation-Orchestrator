@@ -1,11 +1,17 @@
-from flask import Blueprint, session, jsonify, render_template, request, redirect, url_for
+from flask import Blueprint, jsonify, render_template, request, redirect, url_for
 from app.extensions import db
 from app.models.user import User
 from app.models.workgroup import Workgroup
 from app.models.workgroupAssignment import WorkgroupAssignment
-from app.auth_utils import manager_required, login_required
+from sqlalchemy.exc import IntegrityError
+from app.auth_utils import (
+    get_current_auth_token,
+    get_current_role,
+    get_current_user_id,
+    login_required,
+    manager_required,
+)
 from datetime import datetime
-from app.extensions import db, socketio     
 
 manager = Blueprint("manager", __name__)
 
@@ -15,15 +21,15 @@ manager = Blueprint("manager", __name__)
 def manager_dashboard():
     #  FIX 5: Also verify the role at the page level so an engineer
     # cannot navigate directly to /manager by typing the URL.
-    if session.get("role") != "Manager":
+    if get_current_role() != "Manager":
         return redirect(url_for("auth.login"))
-    return render_template("managerDashboard.html")
+    return render_template("managerDashboard.html", auth_token=get_current_auth_token())
 
 
 @manager.route("/api/stats", methods=["GET"])
 @manager_required          #  Engineer cannot call this anymore
 def get_stats():
-    manager_id = session["user_id"]
+    manager_id = get_current_user_id()
 
     total = Workgroup.query.filter_by(manager_id=manager_id).count()
     active = Workgroup.query.filter_by(manager_id=manager_id, status="Active").count()
@@ -41,7 +47,7 @@ def get_stats():
 @manager.route("/api/workgroups", methods=["GET"])
 @manager_required
 def get_workgroups():
-    manager_id = session["user_id"]
+    manager_id = get_current_user_id()
     print(f"Fetching workgroups for manager_id: {manager_id}")  # Debug log
     workgroups = Workgroup.query.filter_by(manager_id=manager_id).all()
     print(f"Found {len(workgroups)} workgroups")  # Debug log
@@ -70,14 +76,27 @@ def get_workgroups():
 @manager.route("/api/workgroups", methods=["POST"])
 @manager_required
 def create_workgroup():
-    data = request.json
+    data = request.get_json(silent=True) or {}
     print(f"Creating workgroup: {data}")  # Debug log
+
+    name = (data.get("name") or "").strip()
+    release_version = (data.get("release_version") or "").strip()
+
+    if not name:
+        return jsonify({"error": "Workgroup name is required."}), 400
+    if not release_version:
+        return jsonify({"error": "Release version is required."}), 400
+
+    # Friendly pre-check; DB unique constraint remains the final race-safe guard.
+    existing = Workgroup.query.filter_by(name=name).first()
+    if existing:
+        return jsonify({"error": "Workgroup name already exists. Please choose a unique name."}), 409
 
     try:
         wg = Workgroup(
-            name=data["name"],
-            release_version=data["release_version"],
-            manager_id=session["user_id"],
+            name=name,
+            release_version=release_version,
+            manager_id=get_current_user_id(),
             status="Completed" if data.get("is_completed", False) else "Active"
         )
 
@@ -95,7 +114,6 @@ def create_workgroup():
 
         db.session.commit()
         print("Committed to database")  # Debug log
-        socketio.emit("workgroup_created", {"workgroup_id": wg.id})
         
         # Verify assignments were saved
         saved_assignments = WorkgroupAssignment.query.filter_by(workgroup_id=wg.id).all()
@@ -117,6 +135,10 @@ def create_workgroup():
             "created_at": wg.created_at.isoformat() if wg.created_at else None,
             "engineers": engineers
         })
+    except IntegrityError as e:
+        db.session.rollback()
+        print(f"Integrity error creating workgroup: {str(e)}")  # Debug log
+        return jsonify({"error": "Workgroup name already exists. Please choose a unique name."}), 409
     except Exception as e:
         db.session.rollback()
         print(f"Error creating workgroup: {str(e)}")  # Debug log
@@ -126,13 +148,29 @@ def create_workgroup():
 @manager.route("/api/workgroups/<int:id>", methods=["PATCH"])
 @manager_required          #  Engineer cannot edit workgroups
 def update_workgroup(id):
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     wg = Workgroup.query.get_or_404(id)
 
+    proposed_name = None
     if "name" in data:
-        wg.name = data["name"]
+        proposed_name = (data["name"] or "").strip()
+        if not proposed_name:
+            return jsonify({"error": "Workgroup name is required."}), 400
+
+        existing = Workgroup.query.filter(
+            Workgroup.name == proposed_name,
+            Workgroup.id != id
+        ).first()
+        if existing:
+            return jsonify({"error": "Workgroup name already exists. Please choose a unique name."}), 409
+
+    if proposed_name is not None:
+        wg.name = proposed_name
     if "release_version" in data:
-        wg.release_version = data["release_version"]
+        release_version = (data["release_version"] or "").strip()
+        if not release_version:
+            return jsonify({"error": "Release version is required."}), 400
+        wg.release_version = release_version
     if "is_completed" in data:
         wg.status = "Completed" if data["is_completed"] else "Active"
 
@@ -153,8 +191,12 @@ def update_workgroup(id):
         for eid in add_ids:
             db.session.add(WorkgroupAssignment(workgroup_id=id, employee_id=eid))
 
-    db.session.commit()
-    socketio.emit("workgroup_created", {"workgroup_id": wg.id})
+    try:
+        db.session.commit()
+    except IntegrityError as e:
+        db.session.rollback()
+        print(f"Integrity error updating workgroup: {str(e)}")  # Debug log
+        return jsonify({"error": "Workgroup name already exists. Please choose a unique name."}), 409
 
     assignments = WorkgroupAssignment.query.filter_by(workgroup_id=id).all()
     engineers = []
@@ -179,7 +221,6 @@ def delete_workgroup(id):
     WorkgroupAssignment.query.filter_by(workgroup_id=id).delete()
     db.session.delete(wg)
     db.session.commit()
-    socketio.emit("workgroup_created", {"workgroup_id": wg.id})
     return jsonify({"message": "Workgroup deleted"})
 
 

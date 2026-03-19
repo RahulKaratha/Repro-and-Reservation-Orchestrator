@@ -30,6 +30,7 @@ class Workgroup(db.Model):
 
     # Indexes
     __table_args__ = (
+        db.UniqueConstraint('Name', name='uq_workgroup_name'),
         db.Index('idx_manager', 'Manager_ID'),
         db.Index('idx_status', 'Status'),
     )

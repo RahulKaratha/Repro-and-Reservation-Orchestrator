@@ -32,6 +32,14 @@ let workgroups = [];
 let engineers = [];
 let currentFilter = 'all';
 
+function getAuthHeaders(headers = {}) {
+    return window.RROAuth ? window.RROAuth.getAuthHeaders(headers) : headers;
+}
+
+function withAuthUrl(path) {
+    return window.RROAuth ? window.RROAuth.appendAuthToken(path) : path;
+}
+
 /* =========================================
    DOM References
    ========================================= */
@@ -81,7 +89,7 @@ const dom = {
 async function apiFetch(path, options = {}) {
     try {
         const res = await fetch(`${API_BASE}${path}`, {
-            headers: { 'Content-Type': 'application/json', ...options.headers },
+            headers: getAuthHeaders({ 'Content-Type': 'application/json', ...options.headers }),
             credentials: 'include',
             ...options,
         });
@@ -90,6 +98,40 @@ async function apiFetch(path, options = {}) {
     } catch (err) {
         console.warn(`[API] ${options.method || 'GET'} ${path} → ${err.message}`);
         return null;
+    }
+}
+
+/**
+ * Fetch helper that preserves status code and backend error text.
+ * Used by form mutations that need strict conflict handling.
+ */
+async function apiFetchDetailed(path, options = {}) {
+    try {
+        const res = await fetch(`${API_BASE}${path}`, {
+            headers: getAuthHeaders({ 'Content-Type': 'application/json', ...options.headers }),
+            credentials: 'include',
+            ...options,
+        });
+
+        let body = null;
+        try {
+            body = await res.json();
+        } catch (parseErr) {
+            body = null;
+        }
+
+        if (!res.ok) {
+            return {
+                ok: false,
+                status: res.status,
+                error: body && body.error ? body.error : `HTTP ${res.status} ${res.statusText}`,
+            };
+        }
+
+        return { ok: true, status: res.status, data: body };
+    } catch (err) {
+        console.warn(`[API] ${options.method || 'GET'} ${path} → ${err.message}`);
+        return { ok: false, status: 0, error: 'Unable to reach server. Please try again.' };
     }
 }
 
@@ -357,7 +399,7 @@ function attachCardMenuListeners() {
             if (action === 'delete') handleDeleteWorkgroup(id);
             else if (action === 'markdone') handleMarkDone(id);
             else if (action === 'edit') handleEditWorkgroup(id);
-            else if (action === 'view') window.location.href = `/bug_management?workgroup_id=${id}`;
+            else if (action === 'view') window.location.href = withAuthUrl(`/bug_management?workgroup_id=${id}`);
         });
     });
 
@@ -366,7 +408,7 @@ function attachCardMenuListeners() {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const id = parseInt(btn.dataset.id);
-            window.location.href = `/bug_management?workgroup_id=${id}`;
+            window.location.href = withAuthUrl(`/bug_management?workgroup_id=${id}`);
         });
     });
 }
@@ -537,50 +579,56 @@ async function handleCreateWorkgroup(e) {
         engineer_ids: selectedEngineers,
     };
 
+    let resultData = null;
+
+    const showMutationError = (message) => {
+        errorText.textContent = message;
+        errorBanner.classList.remove('hidden');
+    };
+
     if (editId) {
         // Edit mode (PATCH)
-        const result = await apiFetch(`/api/workgroups/${editId}`, {
+        const result = await apiFetchDetailed(`/api/workgroups/${editId}`, {
             method: 'PATCH',
             body: JSON.stringify(payload),
         });
 
-        if (result) {
+        if (result.ok) {
+            resultData = result.data;
             const index = workgroups.findIndex(w => w.id === parseInt(editId));
-            if (index !== -1) workgroups[index] = result;
+            if (index !== -1) workgroups[index] = result.data;
         } else {
-            // Local fallback
-            const wg = workgroups.find(w => w.id === parseInt(editId));
-            if (wg) {
-                Object.assign(wg, payload);
-                wg.engineers = engineers.filter(e => payload.engineer_ids.includes(e.id));
+            showMutationError(result.error || 'Unable to update workgroup.');
+            if ((result.status === 409 || result.status === 400) && /name/i.test(result.error || '')) {
+                dom.workgroupName.classList.add('input-error');
+                dom.workgroupName.focus();
             }
+            return;
         }
     } else {
         // Create mode (POST)
-        const result = await apiFetch('/api/workgroups', {
+        const result = await apiFetchDetailed('/api/workgroups', {
             method: 'POST',
             body: JSON.stringify(payload),
         });
 
-        if (result) {
-            workgroups.push(result);
+        if (result.ok) {
+            resultData = result.data;
+            workgroups.push(result.data);
         } else {
-            // Local fallback
-            workgroups.push({
-                id: Date.now(),
-                name: payload.name,
-                release_version: payload.release_version,
-                is_completed: payload.is_completed,
-                engineers: engineers.filter(e => payload.engineer_ids.includes(e.id)),
-                created_at: new Date().toISOString(),
-            });
+            showMutationError(result.error || 'Unable to create workgroup.');
+            if ((result.status === 409 || result.status === 400) && /name/i.test(result.error || '')) {
+                dom.workgroupName.classList.add('input-error');
+                dom.workgroupName.focus();
+            }
+            return;
         }
     }
 
     closeModal();
     renderWorkgroups();
     renderStats(computeLocalStats());
-    if (editId && result) loadStats(); else if (!editId && result) loadStats();
+    if (resultData) loadStats();
 }
 
 /* =========================================
@@ -626,19 +674,53 @@ function escapeHtml(str) {
 }
 
 function renderEngineers() {
+    const searchBox = document.getElementById('engineersSearch');
     if (engineers.length === 0) {
         dom.engineersEmpty.style.display = '';
         dom.engineersList.style.display = 'none';
+        if (searchBox) searchBox.style.display = 'none';
         return;
     }
     dom.engineersEmpty.style.display = 'none';
     dom.engineersList.style.display = '';
+    if (searchBox) searchBox.style.display = '';
     dom.engineersList.innerHTML = engineers.map(eng => `
-    <div class="engineer-item">
+    <div class="engineer-item" data-name="${escapeHtml(eng.name.toLowerCase())}" data-email="${escapeHtml(eng.email.toLowerCase())}">
       <input type="checkbox" id="eng-${eng.id}" value="${eng.id}" />
       <label for="eng-${eng.id}">${escapeHtml(eng.name)} — ${escapeHtml(eng.email)}</label>
     </div>
   `).join('');
+
+    // Reset search input
+    const searchInput = document.getElementById('engineerSearchInput');
+    if (searchInput) searchInput.value = '';
+}
+
+function filterEngineersSearch(query) {
+    const items = document.querySelectorAll('#engineersList .engineer-item');
+    const q = query.toLowerCase().trim();
+    let visibleCount = 0;
+    items.forEach(item => {
+        const name = item.dataset.name || '';
+        const email = item.dataset.email || '';
+        const matches = !q || name.includes(q) || email.includes(q);
+        item.style.display = matches ? '' : 'none';
+        if (matches) visibleCount++;
+    });
+    // Show a "no results" message if nothing matches
+    let noResult = document.getElementById('engineerSearchNoResult');
+    if (visibleCount === 0 && q) {
+        if (!noResult) {
+            noResult = document.createElement('p');
+            noResult.id = 'engineerSearchNoResult';
+            noResult.className = 'engineer-search-no-result';
+            noResult.textContent = 'No engineers match your search.';
+            dom.engineersList.appendChild(noResult);
+        }
+        noResult.style.display = '';
+    } else if (noResult) {
+        noResult.style.display = 'none';
+    }
 }
 
 /* =========================================
@@ -660,8 +742,8 @@ function initEventListeners() {
     // Logout
     dom.btnLogout.addEventListener('click', async () => {
         await apiFetch('/api/auth/logout', { method: 'POST', credentials: "include"});
-        // In local mock, simply reset currentUser
-         window.location.href = "/";
+        if (window.RROAuth) window.RROAuth.clearToken();
+        window.location.href = "/";
     });
 
     // Close modal
@@ -708,6 +790,14 @@ function initEventListeners() {
             updateStepIndicators();
         }
     });
+
+    // Engineer search — dynamic filtering
+    const engineerSearchInput = document.getElementById('engineerSearchInput');
+    if (engineerSearchInput) {
+        engineerSearchInput.addEventListener('input', (e) => {
+            filterEngineersSearch(e.target.value);
+        });
+    }
 }
 
 /* =========================================

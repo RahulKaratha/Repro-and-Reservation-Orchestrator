@@ -18,6 +18,8 @@ class Bug(db.Model):
         nullable=False
     )
 
+    bug_name = db.Column(db.String(255), nullable=True)
+
     bug_type = db.Column(
         db.Enum('repro', 'test'),
         nullable=False
@@ -66,5 +68,18 @@ class Bug(db.Model):
     stations = db.relationship(
         "BugStation",
         back_populates="bug",
+        cascade="all, delete-orphan"
+    )
+
+    comments = db.relationship(
+        "BugComment",
+        back_populates="bug",
+        cascade="all, delete-orphan"
+    )
+
+    ml_analysis = db.relationship(
+        "MLAnalysis",
+        back_populates="bug",
+        uselist=False,
         cascade="all, delete-orphan"
     )

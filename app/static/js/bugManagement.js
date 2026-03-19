@@ -31,6 +31,12 @@ let currentUser = null;
 let workgroups = [];
 let engineers = [];
 let currentFilter = 'all';
+let bugOwnershipFilter = 'workgroup';
+let activeWorkgroupId = null;
+
+function getAuthHeaders(headers = {}) {
+    return window.RROAuth ? window.RROAuth.getAuthHeaders(headers) : headers;
+}
 
 /* =========================================
    DOM References
@@ -55,7 +61,10 @@ const dom = {
     reproBugsBody: $('#reproBugsBody'),
     testBugsBody: $('#testBugsBody'),
     searchInput: $('#searchInput'),
-    searchDropdown: $('#searchDropdown')
+    searchDropdown: $('#searchDropdown'),
+    ownershipFilter: $('#ownershipFilter'),
+    filterWorkgroupBugs: $('#filterWorkgroupBugs'),
+    filterMyBugs: $('#filterMyBugs')
 };
 
 /* =========================================
@@ -69,7 +78,7 @@ const dom = {
 async function apiFetch(path, options = {}) {
     try {
         const res = await fetch(`${API_BASE}${path}`, {
-            headers: { 'Content-Type': 'application/json', ...options.headers },
+            headers: getAuthHeaders({ 'Content-Type': 'application/json', ...options.headers }),
             credentials: 'include',
             ...options,
         });
@@ -115,11 +124,62 @@ async function loadCurrentUser() {
 let allReproBugs = [];
 let allTestBugs = [];
 
-async function loadBugsData() {
+function getCurrentWorkgroupId() {
     const urlParams = new URLSearchParams(window.location.search);
-    const workgroupId = urlParams.get('workgroup_id');
-    const apiPath = workgroupId ? `/api/bugs?workgroup_id=${workgroupId}` : '/api/bugs';
-    const statsPath = workgroupId ? `/api/bugs/stats?workgroup_id=${workgroupId}` : '/api/bugs/stats';
+    return urlParams.get('workgroup_id');
+}
+
+function shouldShowEngineerOwnershipFilter() {
+    return currentUser?.role === 'Engineer' && !!activeWorkgroupId;
+}
+
+function buildBugQueryParams(extraParams = {}) {
+    const params = new URLSearchParams();
+
+    if (activeWorkgroupId) {
+        params.set('workgroup_id', activeWorkgroupId);
+    }
+
+    if (shouldShowEngineerOwnershipFilter() && bugOwnershipFilter === 'mine') {
+        params.set('my_only', 'true');
+    }
+
+    Object.entries(extraParams).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+            params.set(key, String(value));
+        }
+    });
+
+    return params;
+}
+
+function updateOwnershipFilterUi() {
+    if (!dom.ownershipFilter || !dom.filterWorkgroupBugs || !dom.filterMyBugs) return;
+
+    const showFilter = shouldShowEngineerOwnershipFilter();
+    dom.ownershipFilter.classList.toggle('hidden', !showFilter);
+
+    dom.filterWorkgroupBugs.classList.toggle('active', bugOwnershipFilter === 'workgroup');
+    dom.filterMyBugs.classList.toggle('active', bugOwnershipFilter === 'mine');
+}
+
+async function setBugOwnershipFilter(nextFilter) {
+    if (bugOwnershipFilter === nextFilter) return;
+
+    bugOwnershipFilter = nextFilter;
+    updateOwnershipFilterUi();
+
+    if (dom.searchInput) dom.searchInput.value = '';
+    if (dom.searchDropdown) dom.searchDropdown.classList.add('hidden');
+
+    await loadBugsData();
+}
+
+async function loadBugsData() {
+    const params = buildBugQueryParams();
+    const qs = params.toString();
+    const apiPath = qs ? `/api/bugs?${qs}` : '/api/bugs';
+    const statsPath = qs ? `/api/bugs/stats?${qs}` : '/api/bugs/stats';
 
     console.log('Loading bugs from:', apiPath);
     const data = await apiFetch(apiPath);
@@ -162,6 +222,8 @@ function renderUserInfo() {
     if (dom.userName) dom.userName.textContent = currentUser.fullName || currentUser.name;
     if (dom.userRoleBadge) dom.userRoleBadge.textContent = currentUser.role || 'Manager';
     if (dom.profileEmail) dom.profileEmail.textContent = currentUser.email || 'manager@rro.com';
+
+    updateOwnershipFilterUi();
 }
 
 function renderStats(stats) {
@@ -213,45 +275,170 @@ function generateBugsTableRows(bugs) {
             'P3': 'priority-p3',
             'P4': 'priority-p4'
         }[bug.priority] || 'priority-p2';
+        const bugNameFull = bug.bug_name || '—';
+
+        const testsCount = Array.isArray(bug.tests) ? bug.tests.length : 0;
+        const testsLabel = `${testsCount} ${testsCount === 1 ? 'test' : 'tests'}`;
 
         return `
-        <tr class="bug-row" onmouseenter="this.style.backgroundColor='#f1f5f9'" onmouseleave="this.style.backgroundColor=''">
+        <tr class="bug-row"
+            data-bug-db-id="${escapeHtml(bug.db_id)}"
+            data-bug-code="${escapeHtml(bug.id)}"
+            data-bug-name="${escapeHtml(bug.bug_name || '—')}"
+            data-priority="${escapeHtml(bug.priority || 'P2')}"
+            data-engineer-name="${escapeHtml(bug.engineer_name || 'Unassigned')}"
+            data-expanded="false"
+            onclick="toggleBugExpansion(this)"
+            style="cursor: pointer;"
+            onmouseenter="this.style.backgroundColor='#f1f5f9'"
+            onmouseleave="this.style.backgroundColor=''">
             <td><span class="priority-badge ${priorityClass}">${escapeHtml(bug.priority || 'P2')}</span></td>
-            <td class="bug-id-cell">${escapeHtml(bug.id)}</td>
-            <td class="engineer-cell">
-                <div class="engineer-avatar" style="background: ${bug.engineer.color}">${escapeHtml(bug.engineer.initials)}</div>
-                <span class="engineer-name">${escapeHtml(bug.engineer.name)}</span>
-            </td>
-            <td class="summary-cell">${escapeHtml(bug.summary || 'No summary')}</td>
             <td>
-                <div class="tests-cell">
-                    ${generateBadgesHtml(bug.tests, 'test')}
-                </div>
+                <div class="bug-id-main">${escapeHtml(bug.id)}</div>
             </td>
+            <td class="bug-name-cell" title="${escapeHtml(bugNameFull)}">${escapeHtml(bugNameFull)}</td>
+            <td class="engineer-cell">${escapeHtml(bug.engineer_name || 'Unassigned')}</td>
             <td>
-                <div class="stations-cell">
-                    ${generateBadgesHtml(bug.stations, 'station')}
-                </div>
-            </td>
-            <td class="config-cell">${escapeHtml(bug.config)}</td>
-            <td>
-                <input type="text" class="resource-input" placeholder="Enter group..." value="${escapeHtml(bug.resourceGroup)}" />
-            </td>
-            <td>
-                <div class="action-cell">
-                    <button class="btn-action btn-run">
-                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3L12 8L4 13V3Z" fill="currentColor" stroke="none"/></svg>
-                        Run Now
-                    </button>
-                    <button class="btn-action btn-later">
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="7"/><path d="M8 4V8L11 10"/></svg>
-                        Run Later
-                    </button>
+                <div class="tests-trigger">
+                    <span class="tests-count-badge">${escapeHtml(testsLabel)}</span>
+                    <svg class="expand-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
                 </div>
             </td>
         </tr>
     `;
     }).join('');
+}
+
+function getPriorityClass(priority) {
+    return {
+        'P0': 'priority-p0',
+        'P1': 'priority-p1',
+        'P2': 'priority-p2',
+        'P3': 'priority-p3',
+        'P4': 'priority-p4'
+    }[priority] || 'priority-p2';
+}
+
+function getNodeConfigLabel(nodesValue) {
+    if (nodesValue === null || nodesValue === undefined || nodesValue === '') {
+        return '—';
+    }
+    return `N${escapeHtml(nodesValue)}`;
+}
+
+function buildTestsTableHtml(testsPayload) {
+    const tests = testsPayload?.tests || [];
+    const rowsHtml = tests.length
+        ? tests.map(t => `
+            <tr>
+                <td>${escapeHtml(t?.test_name || '—')}</td>
+                <td>${escapeHtml(t?.station_name || '—')}</td>
+                <td>${escapeHtml(t?.build_version || '—')}</td>
+                <td>${escapeHtml(t?.configuration || '—')}</td>
+            </tr>
+        `).join('')
+        : `
+            <tr>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+            </tr>
+        `;
+
+    return `
+        <table class="sub-tests-table">
+            <thead>
+                <tr>
+                    <th>Test</th>
+                    <th>Station Name</th>
+                    <th>Build</th>
+                    <th>Configuration</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rowsHtml}
+            </tbody>
+        </table>
+    `;
+}
+
+function buildMlAnalysisSectionHtml(analysisPayload) {
+    const analysis = analysisPayload?.analysis || {};
+    const pending = 'Pending analysis...';
+
+    return `
+        <div class="ml-analysis-inner">
+            <div class="ml-analysis-title">ML's Analysis</div>
+            <ol class="ml-analysis-list">
+                <li class="ml-analysis-item">
+                    <span class="ml-analysis-label">Repro Actions:</span>
+                    <span class="ml-analysis-value">${escapeHtml(analysis.repro_actions || pending)}</span>
+                </li>
+                <li class="ml-analysis-item">
+                    <span class="ml-analysis-label">Config Changes:</span>
+                    <span class="ml-analysis-value">${escapeHtml(analysis.config_changes || pending)}</span>
+                </li>
+                <li class="ml-analysis-item">
+                    <span class="ml-analysis-label">Repro Readiness:</span>
+                    <span class="ml-analysis-value">${escapeHtml(analysis.repro_readiness || pending)}</span>
+                </li>
+                <li class="ml-analysis-item">
+                    <span class="ml-analysis-label">Summary:</span>
+                    <span class="ml-analysis-value">${escapeHtml(analysis.summary || pending)}</span>
+                </li>
+            </ol>
+        </div>
+    `;
+}
+
+function generateExpansionHtml(bugCode, testsPayload, analysisPayload) {
+    return `
+        <tr class="expansion-row" data-expansion-for="${escapeHtml(bugCode)}">
+            <td colspan="5">
+                ${buildTestsTableHtml(testsPayload)}
+                ${buildMlAnalysisSectionHtml(analysisPayload)}
+            </td>
+        </tr>
+    `;
+}
+
+async function toggleBugExpansion(row) {
+    const bugCode = row.dataset.bugCode;
+    const testsTrigger = row.querySelector('.tests-trigger');
+    const chevron = row.querySelector('.expand-chevron');
+
+    if (row.dataset.expanded === 'true') {
+        const existingRows = Array.from(row.parentElement.querySelectorAll('tr[data-expansion-for]'));
+        existingRows
+            .filter(expansionRow => expansionRow.dataset.expansionFor === bugCode)
+            .forEach(expansionRow => expansionRow.remove());
+
+        row.dataset.expanded = 'false';
+        if (testsTrigger) testsTrigger.classList.remove('open');
+        if (chevron) chevron.classList.remove('open');
+        return;
+    }
+
+    row.dataset.expanded = 'true';
+    if (testsTrigger) testsTrigger.classList.add('open');
+    if (chevron) chevron.classList.add('open');
+
+    const dbId = row.dataset.bugDbId;
+
+    const [testsPayload, analysisPayload] = await Promise.all([
+        apiFetch('/api/bugs/' + dbId + '/tests'),
+        apiFetch('/api/bugs/' + dbId + '/analysis')
+    ]);
+
+    if (row.dataset.expanded !== 'true') {
+        return;
+    }
+
+    const expansionHtml = generateExpansionHtml(bugCode, testsPayload, analysisPayload);
+    row.insertAdjacentHTML('afterend', expansionHtml);
 }
 
 function renderBugs(reproBugs, testBugs) {
@@ -272,8 +459,7 @@ function renderBugs(reproBugs, testBugs) {
 let searchDebounceTimer = null;
 
 function getSearchWorkgroupId() {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('workgroup_id');
+    return activeWorkgroupId;
 }
 
 /**
@@ -348,7 +534,7 @@ function filterBugsBySelection(type, value) {
             case 'Bug ID':
                 return bug.id.toLowerCase() === valueLower;
             case 'Engineer':
-                return bug.engineer.name.toLowerCase() === valueLower;
+                return (bug.engineer_name || '').toLowerCase() === valueLower;
             case 'Test':
                 return bug.tests.some(t => t.toLowerCase() === valueLower);
             case 'Station':
@@ -384,9 +570,8 @@ function handleSearchInput() {
     }
 
     searchDebounceTimer = setTimeout(async () => {
-        const workgroupId = getSearchWorkgroupId();
-        let apiPath = `/api/bugs/search?q=${encodeURIComponent(query)}`;
-        if (workgroupId) apiPath += `&workgroup_id=${workgroupId}`;
+        const params = buildBugQueryParams({ q: query });
+        const apiPath = `/api/bugs/search?${params.toString()}`;
 
         const suggestions = await apiFetch(apiPath);
         if (suggestions !== null) {
@@ -410,10 +595,9 @@ function initEventListeners() {
     // Logout
     dom.btnLogout.addEventListener('click', async () => {
         await apiFetch('/api/auth/logout', { method: 'POST' });
-        // In local mock, simply reset currentUser
+        if (window.RROAuth) window.RROAuth.clearToken();
         currentUser = null;
-        alert('Logged out locally (mock).');
-        location.reload();
+        window.location.href = '/';
     });
 
     // Section Collapse Toggles
@@ -436,6 +620,19 @@ function initEventListeners() {
             if (e.key === 'Escape') {
                 dom.searchDropdown.classList.add('hidden');
             }
+        });
+    }
+
+    // Engineer bug ownership filter
+    if (dom.filterWorkgroupBugs) {
+        dom.filterWorkgroupBugs.addEventListener('click', () => {
+            setBugOwnershipFilter('workgroup');
+        });
+    }
+
+    if (dom.filterMyBugs) {
+        dom.filterMyBugs.addEventListener('click', () => {
+            setBugOwnershipFilter('mine');
         });
     }
 }
@@ -472,8 +669,10 @@ function escapeHtml(str) {
    ========================================= */
 
 async function init() {
+    activeWorkgroupId = getCurrentWorkgroupId();
     initEventListeners();
     await loadCurrentUser();
+    updateOwnershipFilterUi();
     await loadBugsData();
 }
 
