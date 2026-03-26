@@ -178,7 +178,7 @@ def chathpe_chatlite():
  
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Mock Bugzilla REST API server")
-    parser.add_argument("--port", type=int, default=5000, help="Port to listen on (default: 5000)")
+    parser.add_argument("--port", type=int, default=5001, help="Port to listen on (default: 5001)")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
     args = parser.parse_args()
  

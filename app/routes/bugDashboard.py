@@ -64,48 +64,8 @@ def get_bugs():
         if role == 'Manager' and workgroup.manager_id != user_id:
             return jsonify({"error": "Unauthorized"}), 403
 
-    query = Bug.query
-
-    if workgroup_id:
-        # Filter bugs by workgroup - get engineers assigned to this workgroup
-        engineer_ids = db.session.query(WorkgroupAssignment.employee_id).filter(
-            WorkgroupAssignment.workgroup_id == workgroup_id
-        ).all()
-        engineer_ids = [e[0] for e in engineer_ids]
-        
-        if not engineer_ids:
-            # No engineers assigned to this workgroup
-            return jsonify({"repro": [], "test": []})
-        
-        query = query.filter(or_(Bug.engineer_id.in_(engineer_ids), Bug.engineer_id.is_(None)))
-
-        # Engineers can narrow the workgroup view to only their assigned bugs.
-        if role == "Engineer" and my_only:
-            query = query.filter(Bug.engineer_id == user_id)
-    elif role == "Manager":
-        # Only include bugs whose engineer belongs to a workgroup managed by this manager
-        engineer_ids_subq = (
-               db.session.query(db.func.distinct(WorkgroupAssignment.employee_id))
-                .join(Workgroup, WorkgroupAssignment.workgroup_id == Workgroup.id)
-                .filter(Workgroup.manager_id == user_id)
-                .subquery()
-        )
-        
-
-        engineer_ids = select(WorkgroupAssignment.employee_id).join(
-            Workgroup,
-            Workgroup.id == WorkgroupAssignment.workgroup_id
-        ).where(
-            Workgroup.manager_id == user_id
-        )
-
-        query = query.filter(or_(Bug.engineer_id.in_(engineer_ids), Bug.engineer_id.is_(None)))
-        
-    elif role == "Engineer":
-        # Engineers only see their own bugs
-        query = query.filter(or_(Bug.engineer_id == user_id, Bug.engineer_id.is_(None)))
-
-    bugs = query.all()
+    # --- TEMPORARY: show ALL bugs regardless of role/workgroup ---
+    bugs = Bug.query.all()
 
     repro = []
     test = []
@@ -121,6 +81,7 @@ def get_bugs():
                 if b.engineer else "Unassigned"
             ),
             "priority": b.priority,
+            "engineer_id": b.engineer_id,
             "engineer": {
                 "name": b.engineer.full_name if b.engineer else "Unassigned",
                 "initials": (
@@ -204,39 +165,8 @@ def bug_stats():
         if role == 'Manager' and workgroup.manager_id != user_id:
             return jsonify({"error": "Unauthorized"}), 403
 
+    # --- TEMPORARY: show ALL stats regardless of role/workgroup ---
     query = Bug.query
-
-    if workgroup_id:
-        # Filter bugs by workgroup
-        engineer_ids = db.session.query(WorkgroupAssignment.employee_id).filter(
-            WorkgroupAssignment.workgroup_id == workgroup_id
-        ).all()
-        engineer_ids = [e[0] for e in engineer_ids]
-        
-        if not engineer_ids:
-            return jsonify({
-                "totalBugs": 0,
-                "reproBugs": 0,
-                "testBugs": 0,
-                "pendingActions": 0
-            })
-        
-        query = query.filter(or_(Bug.engineer_id.in_(engineer_ids), Bug.engineer_id.is_(None)))
-
-        if role == "Engineer" and my_only:
-            query = query.filter(Bug.engineer_id == user_id)
-    elif role == "Manager":
-       engineer_ids_subq = (
-            db.session.query(db.func.distinct(WorkgroupAssignment.employee_id))
-            .join(Workgroup, WorkgroupAssignment.workgroup_id == Workgroup.id)
-            .filter(Workgroup.manager_id == user_id)
-            .subquery()
-        )
-       query = query.filter(or_(Bug.engineer_id.in_(engineer_ids_subq), Bug.engineer_id.is_(None)))
-
-    elif role == "Engineer":
-        query = query.filter(or_(Bug.engineer_id == user_id, Bug.engineer_id.is_(None)))
-
     total = query.count()
     repro = query.filter_by(bug_type="repro").count()
     test = query.filter_by(bug_type="test").count()
@@ -450,4 +380,19 @@ def get_bug_comments(bug_id):
             for comment in comments
         ]
     })
+
+
+# --------------------------------------------------
+# RESERVE STATION
+# --------------------------------------------------
+@bug.route("/api/reservations", methods=["POST"])
+def create_reservation():
+    # Only Engineers can reserve stations
+    if get_current_role() != "Engineer":
+         return jsonify({"error": "Unauthorized: Only Engineers can reserve stations"}), 403
+
+    data = request.json
+    print(f"[RESERVATION] Received: {data}")
+    # STUB: In a real app, we'd save this to the DB.
+    return jsonify({"message": "Reservation successful", "data": data})
 

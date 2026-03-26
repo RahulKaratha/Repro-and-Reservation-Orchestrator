@@ -16,8 +16,8 @@ def init_database():
     app = create_app()
     
     with app.app_context():
-        print("🗑️  Dropping all existing tables...")
-        db.drop_all()
+        # print("🗑️  Dropping all existing tables...")
+        # db.drop_all()
         
         print("📋 Creating all tables from models...")
         db.create_all()

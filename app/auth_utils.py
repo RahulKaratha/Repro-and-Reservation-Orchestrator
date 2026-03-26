@@ -63,7 +63,11 @@ def get_request_auth_token():
 
 
 def get_auth_context():
+    import datetime
     token = get_request_auth_token()
+    
+    with open(r"D:\Repro-and-Reservation-Orchestrator\debug_bugs.txt", "a") as f:
+        f.write(f"[{datetime.datetime.now()}] get_auth_context: token={'exists' if token else 'None'}\n")
 
     if token is not None:
         _prune_expired_tab_auth_sessions()
@@ -72,7 +76,7 @@ def get_auth_context():
             return None
 
         user = User.query.get(auth_session["user_id"])
-        if not user or user.role != auth_session["role"]:
+        if not user:
             revoke_tab_auth_session(token)
             return None
 
@@ -95,7 +99,7 @@ def get_auth_context():
     return {
         "user": user,
         "user_id": user.id,
-        "role": session.get("role") or user.role,
+        "role": user.role,
         "auth_token": None,
         "source": "cookie-session",
     }
